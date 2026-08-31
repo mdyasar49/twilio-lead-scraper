@@ -47,7 +47,7 @@ void schedule.sync_google_sheets_to_zoho_crm()
 		tLabel = target.get("label");
 		tType = target.get("type");
 
-		// Direct Google Sheets CSV Export URL (Avoids GViz encoding/script errors)
+		// Direct Google Sheets CSV Export URL
 		csvUrl = "https://docs.google.com/spreadsheets/d/" + tId + "/export?format=csv&gid=" + tGid;
 
 		try
@@ -58,16 +58,23 @@ void schedule.sync_google_sheets_to_zoho_crm()
 				type :GET
 				detailed :true
 			];
-			csvText = resp.get("responseText");
-			if(csvText == null || csvText == "") { csvText = resp.get("response_text"); }
-			if(csvText == null || csvText == "") { csvText = "" + resp.get("response"); }
+			
+			csvText = "";
+			if(resp.get("responseText") != null)
+			{
+				csvText = resp.get("responseText").toString();
+			}
+			if(csvText == "" && resp.get("response") != null)
+			{
+				csvText = resp.get("response").toString();
+			}
 
 			if(csvText != "" && csvText != null)
 			{
-				// Truncate to 200,000 bytes max to strictly prevent Deluge 1MB memory limit exception
-				if(csvText.length() > 200000)
+				// Limit payload to 150,000 bytes max to strictly prevent Deluge 1MB memory limit exception
+				if(csvText.length() > 150000)
 				{
-					csvText = csvText.subString(0, 200000);
+					csvText = csvText.subString(0, 150000);
 				}
 
 				rows = csvText.replaceAll("\r","").toList("\n");
@@ -81,16 +88,9 @@ void schedule.sync_google_sheets_to_zoho_crm()
 						if(isHeader) { isHeader = false; continue; }
 						if(row.trim() == "") { continue; }
 
-						// Smart CSV Split: Handles both quote-separated and comma-separated rows
-						cols = List();
-						if(row.contains("\",\""))
-						{
-							cols = row.replaceAll("\",\"", "###SPLIT###").toList("###SPLIT###");
-						}
-						else
-						{
-							cols = row.toList(",");
-						}
+						// Strip outer quotes and split cleanly by comma
+						cleanRow = row.replaceAll("\"", "");
+						cols = cleanRow.toList(",");
 
 						if(cols.size() >= 5)
 						{
@@ -108,38 +108,38 @@ void schedule.sync_google_sheets_to_zoho_crm()
 
 							if(tType == "STANDARD_10")
 							{
-								scrapDate = if(cols.size() > 0, cols.get(0).replaceAll("\"","").trim(), uploadDate);
-								leadSource = if(cols.size() > 1, cols.get(1).replaceAll("\"","").trim(), "Google Search");
-								rawCompany = if(cols.size() > 2, cols.get(2).replaceAll("\"","").trim(), "");
-								rawEmail = if(cols.size() > 3, cols.get(3).replaceAll("\"","").trim().toLowerCase(), "");
-								rawPhone = if(cols.size() > 4, cols.get(4).replaceAll("\"","").trim(), "");
-								rawIndustry = if(cols.size() > 5, cols.get(5).replaceAll("\"","").trim(), "IT / Software");
-								rawName = if(cols.size() > 6, cols.get(6).replaceAll("\"","").trim(), "Business Owner");
-								rawNotes = if(cols.size() > 9, cols.get(9).replaceAll("\"","").trim(), "");
+								scrapDate = if(cols.size() > 0, cols.get(0).trim(), uploadDate);
+								leadSource = if(cols.size() > 1, cols.get(1).trim(), "Google Search");
+								rawCompany = if(cols.size() > 2, cols.get(2).trim(), "");
+								rawEmail = if(cols.size() > 3, cols.get(3).trim().toLowerCase(), "");
+								rawPhone = if(cols.size() > 4, cols.get(4).trim(), "");
+								rawIndustry = if(cols.size() > 5, cols.get(5).trim(), "IT / Software");
+								rawName = if(cols.size() > 6, cols.get(6).trim(), "Business Owner");
+								rawNotes = if(cols.size() > 9, cols.get(9).trim(), "");
 							}
 							else if(tType == "EXTENDED_28")
 							{
-								scrapDate = if(cols.size() > 0, cols.get(0).replaceAll("\"","").trim(), uploadDate);
-								leadSource = if(cols.size() > 1, cols.get(1).replaceAll("\"","").trim(), "Multi-Tab Scraper");
-								rawCompany = if(cols.size() > 2, cols.get(2).replaceAll("\"","").trim(), "");
-								rawName = if(cols.size() > 7, cols.get(7).replaceAll("\"","").trim(), "");
-								if(rawName == "" && cols.size() > 5) { rawName = cols.get(5).replaceAll("\"","").trim() + " " + cols.get(6).replaceAll("\"","").trim(); }
-								rawEmail = if(cols.size() > 9, cols.get(9).replaceAll("\"","").trim().toLowerCase(), "");
-								rawPhone = if(cols.size() > 10, cols.get(10).replaceAll("\"","").trim(), "");
-								rawMobile = if(cols.size() > 11, cols.get(11).replaceAll("\"","").trim(), "");
-								rawIndustry = if(cols.size() > 12, cols.get(12).replaceAll("\"","").trim(), "IT / Software");
-								rawNotes = if(cols.size() > 22, cols.get(22).replaceAll("\"","").trim(), "");
+								scrapDate = if(cols.size() > 0, cols.get(0).trim(), uploadDate);
+								leadSource = if(cols.size() > 1, cols.get(1).trim(), "Multi-Tab Scraper");
+								rawCompany = if(cols.size() > 2, cols.get(2).trim(), "");
+								rawName = if(cols.size() > 7, cols.get(7).trim(), "");
+								if(rawName == "" && cols.size() > 5) { rawName = cols.get(5).trim() + " " + cols.get(6).trim(); }
+								rawEmail = if(cols.size() > 9, cols.get(9).trim().toLowerCase(), "");
+								rawPhone = if(cols.size() > 10, cols.get(10).trim(), "");
+								rawMobile = if(cols.size() > 11, cols.get(11).trim(), "");
+								rawIndustry = if(cols.size() > 12, cols.get(12).trim(), "IT / Software");
+								rawNotes = if(cols.size() > 22, cols.get(22).trim(), "");
 							}
 							else if(tType == "ODOO_ZOHO_21")
 							{
-								scrapDate = if(cols.size() > 0, cols.get(0).replaceAll("\"","").trim(), uploadDate);
-								rawCompany = if(cols.size() > 1, cols.get(1).replaceAll("\"","").trim(), "");
-								rawName = if(cols.size() > 3, cols.get(3).replaceAll("\"","").trim(), "");
-								rawEmail = if(cols.size() > 5, cols.get(5).replaceAll("\"","").trim().toLowerCase(), "");
-								rawPhone = if(cols.size() > 6, cols.get(6).replaceAll("\"","").trim(), "");
-								rawIndustry = if(cols.size() > 13, cols.get(13).replaceAll("\"","").trim(), "Enterprise Software");
+								scrapDate = if(cols.size() > 0, cols.get(0).trim(), uploadDate);
+								rawCompany = if(cols.size() > 1, cols.get(1).trim(), "");
+								rawName = if(cols.size() > 3, cols.get(3).trim(), "");
+								rawEmail = if(cols.size() > 5, cols.get(5).trim().toLowerCase(), "");
+								rawPhone = if(cols.size() > 6, cols.get(6).trim(), "");
+								rawIndustry = if(cols.size() > 13, cols.get(13).trim(), "Enterprise Software");
 								leadSource = if(tId.contains("1iIcE"), "Odoo ERP Lead Generator", "Zoho Ecosystem Lead Generator");
-								rawNotes = if(cols.size() > 15, cols.get(15).replaceAll("\"","").trim(), "") + " | " + if(cols.size() > 19, cols.get(19).replaceAll("\"","").trim(), "");
+								rawNotes = if(cols.size() > 15, cols.get(15).trim(), "") + " | " + if(cols.size() > 19, cols.get(19).trim(), "");
 							}
 
 							// Email Validation
