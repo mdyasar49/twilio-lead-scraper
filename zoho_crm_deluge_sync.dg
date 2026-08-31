@@ -1,4 +1,4 @@
-void sync_google_sheets_to_zoho_crm()
+void schedule.sync_google_sheets_to_zoho_crm()
 {
 	totalImported = 0;
 	totalSkipped = 0;
@@ -8,7 +8,7 @@ void sync_google_sheets_to_zoho_crm()
 	uploadDate = zoho.currentdate.toString("yyyy-MM-dd");
 	uploadTime = zoho.currenttime.toString("yyyy-MM-dd HH:mm:ss");
 
-	genericTitles = {"contact us", "contact", "home", "about us", "about", "contact our office", "privacy policy", "help center", "terms of service", "terms & conditions", "customer support", "support", "services", "login", "register", "sign in", "double whammy", "overview", "faq", "faqs", "get in touch", "enquiry form", "enquiries", "referral form", "locations", "meet our team", "our team"};
+	genericTitles = "contact us,contact,home,about us,about,contact our office,privacy policy,help center,terms of service,terms & conditions,customer support,support,services,login,register,sign in,double whammy,overview,faq,faqs,get in touch,enquiry form,enquiries,referral form,locations,meet our team,our team";
 
 	// ==============================================================================
 	// 1. BULK SYNC SHEET 1: Web Leads (Code.gs -> Tab: Leads, gid=1144923842)
