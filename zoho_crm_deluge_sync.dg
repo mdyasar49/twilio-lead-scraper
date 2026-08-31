@@ -15,166 +15,98 @@ void schedule.sync_google_sheets_to_zoho_crm()
 	// ==============================================================================
 	webSheetId = "1CbW9pPLyEtyl8cBpjNDcOEuLLFrgK5LFF8xoPRSMbpw";
 	webGid = "1144923842";
-	webOffsets = {0, 100, 200, 300, 400, 500};
 
-	for each currentOffset in webOffsets
+	webCsvUrl = "https://docs.google.com/spreadsheets/d/" + webSheetId + "/gviz/tq?tqx=out:csv&gid=" + webGid;
+	try 
 	{
-		queryStr = "limit 100 offset " + currentOffset;
-		encodedQuery = zoho.encryption.urlEncode(queryStr);
-		webCsvUrl = "https://docs.google.com/spreadsheets/d/" + webSheetId + "/gviz/tq?tqx=out:csv&gid=" + webGid + "&tq=" + encodedQuery;
+		webResp = invokeurl
+		[
+			url :webCsvUrl
+			type :GET
+			detailed :true
+		];
+		webCsvText = webResp.get("responseText");
+		if(webCsvText == null || webCsvText == "") { webCsvText = webResp.get("response_text"); }
+		if(webCsvText == null || webCsvText == "") { webCsvText = "" + webResp.get("response"); }
 
-		try 
+		if(webCsvText != "" && webCsvText != null)
 		{
-			webResp = invokeurl
-			[
-				url :webCsvUrl
-				type :GET
-				detailed :true
-			];
-			webCsvText = webResp.get("responseText");
-			if(webCsvText == null || webCsvText == "") { webCsvText = webResp.get("response_text"); }
-			if(webCsvText == null || webCsvText == "") { webCsvText = "" + webResp.get("response"); }
+			webRows = webCsvText.replaceAll("\r","").toList("\n");
+			info "📦 [Web Leads] Fetched " + webRows.size() + " lines.";
 
-			if(webCsvText != "" && webCsvText != null)
+			if(webRows.size() > 1)
 			{
-				webRows = webCsvText.replaceAll("\r","").toList("\n");
-				info "📦 [Web Leads Offset " + currentOffset + "] Fetched " + webRows.size() + " lines.";
-
-				if(webRows.size() > 1)
+				isHeader = true;
+				for each row in webRows
 				{
-					isHeader = true;
-					for each row in webRows
+					if(isHeader) { isHeader = false; continue; }
+					if(row.trim() == "") { continue; }
+
+					cols = row.replaceAll("\",\"", "###SPLIT###").toList("###SPLIT###");
+					if(cols.size() >= 5)
 					{
-						if(isHeader) { isHeader = false; continue; }
-						if(row.trim() == "") { continue; }
+						totalProcessed = totalProcessed + 1;
 
-						cols = row.replaceAll("\",\"", "###SPLIT###").toList("###SPLIT###");
-						if(cols.size() >= 5)
+						scrapDate = if(cols.size() > 0, cols.get(0).replaceAll("\"","").trim(), uploadDate);
+						leadSource = if(cols.size() > 1, cols.get(1).replaceAll("\"","").trim(), "Google Search");
+						rawCompany = if(cols.size() > 2, cols.get(2).replaceAll("\"","").trim(), "");
+						rawEmail = if(cols.size() > 3, cols.get(3).replaceAll("\"","").trim().toLowerCase(), "");
+						rawPhone = if(cols.size() > 4, cols.get(4).replaceAll("\"","").trim(), "");
+						rawIndustry = if(cols.size() > 5, cols.get(5).replaceAll("\"","").trim(), "IT / Software");
+						rawName = if(cols.size() > 6, cols.get(6).replaceAll("\"","").trim(), "Business Owner");
+						rawNotes = if(cols.size() > 9, cols.get(9).replaceAll("\"","").trim(), "");
+
+						// Email Validation
+						cleanEmail = "";
+						if(rawEmail.contains("@") && rawEmail.contains(".") && !rawEmail.contains("example.com") && !rawEmail.contains("domain.com") && !rawEmail.endsWith(".png") && !rawEmail.endsWith(".jpg") && !rawEmail.endsWith(".webp") && !rawEmail.startsWith("mailto:"))
 						{
-							totalProcessed = totalProcessed + 1;
-
-							scrapDate = if(cols.size() > 0, cols.get(0).replaceAll("\"","").trim(), uploadDate);
-							leadSource = if(cols.size() > 1, cols.get(1).replaceAll("\"","").trim(), "Google Search");
-							rawCompany = if(cols.size() > 2, cols.get(2).replaceAll("\"","").trim(), "");
-							rawEmail = if(cols.size() > 3, cols.get(3).replaceAll("\"","").trim().toLowerCase(), "");
-							rawPhone = if(cols.size() > 4, cols.get(4).replaceAll("\"","").trim(), "");
-							rawIndustry = if(cols.size() > 5, cols.get(5).replaceAll("\"","").trim(), "IT / Software");
-							rawName = if(cols.size() > 6, cols.get(6).replaceAll("\"","").trim(), "Business Owner");
-							rawNotes = if(cols.size() > 9, cols.get(9).replaceAll("\"","").trim(), "");
-
-							// Email Validation
-							cleanEmail = "";
-							if(rawEmail.contains("@") && rawEmail.contains(".") && !rawEmail.contains("example.com") && !rawEmail.contains("domain.com") && !rawEmail.endsWith(".png") && !rawEmail.endsWith(".jpg") && !rawEmail.endsWith(".webp") && !rawEmail.startsWith("mailto:"))
-							{
-								cleanEmail = rawEmail.replaceAll("mailto:", "").replaceAll("<", "").replaceAll(">", "").trim();
-							}
-
-							// Australian Phone Validation
-							cleanPhone = "";
-							cleanMobile = "";
-							phoneDigits = rawPhone.replaceAll("[^0-9]", "");
-
-							if(phoneDigits.length() >= 6 && phoneDigits.length() <= 12 && !rawPhone.contains("."))
-							{
-								if(phoneDigits.startsWith("04") && phoneDigits.length() == 10)
-								{
-									cleanMobile = phoneDigits.subString(0,4) + " " + phoneDigits.subString(4,7) + " " + phoneDigits.subString(7,10);
-								}
-								else if(phoneDigits.startsWith("614") && phoneDigits.length() == 11)
-								{
-									cleanMobile = "+61 4" + phoneDigits.subString(3,6) + " " + phoneDigits.subString(6,9) + " " + phoneDigits.subString(9,11);
-								}
-								else if((phoneDigits.startsWith("1300") || phoneDigits.startsWith("1800")) && phoneDigits.length() == 10)
-								{
-									cleanPhone = phoneDigits.subString(0,4) + " " + phoneDigits.subString(4,7) + " " + phoneDigits.subString(7,10);
-								}
-								else if(phoneDigits.startsWith("13") && phoneDigits.length() == 6)
-								{
-									cleanPhone = phoneDigits.subString(0,2) + " " + phoneDigits.subString(2,4) + " " + phoneDigits.subString(4,6);
-								}
-								else if(phoneDigits.length() == 10 && phoneDigits.startsWith("0") && (phoneDigits.startsWith("02") || phoneDigits.startsWith("03") || phoneDigits.startsWith("07") || phoneDigits.startsWith("08")))
-								{
-									cleanPhone = "(" + phoneDigits.subString(0,2) + ") " + phoneDigits.subString(2,6) + " " + phoneDigits.subString(6,10);
-								}
-								else if(phoneDigits.startsWith("61") && phoneDigits.length() == 11)
-								{
-									cleanPhone = "+61 " + phoneDigits.subString(2,3) + " " + phoneDigits.subString(3,7) + " " + phoneDigits.subString(7,11);
-								}
-								else if(phoneDigits.length() == 8)
-								{
-									cleanPhone = phoneDigits.subString(0,4) + " " + phoneDigits.subString(4,8);
-								}
-							}
-
-							// MANDATORY: Must have Email AND (Phone or Mobile)
-							if(cleanEmail == "" || (cleanPhone == "" && cleanMobile == ""))
-							{
-								totalInvalid = totalInvalid + 1;
-								continue;
-							}
-
-							// Company Name Sanitization
-							cleanCompany = rawCompany;
-							if(cleanCompany == "" || genericTitles.contains(cleanCompany.toLowerCase()) || cleanCompany.length() < 2)
-							{
-								cleanCompany = "Australian Enterprise";
-							}
-
-							// Deduplication
-							isDuplicate = false;
-							if(cleanEmail != "")
-							{
-								existingByEmail = zoho.crm.searchRecords("Leads", "(Email:equals:" + cleanEmail + ")");
-								if(existingByEmail != null && existingByEmail.size() > 0)
-								{
-									isDuplicate = true;
-								}
-							}
-							if(!isDuplicate && cleanMobile != "")
-							{
-								existingByMobile = zoho.crm.searchRecords("Leads", "(Mobile:equals:" + cleanMobile + ")");
-								if(existingByMobile != null && existingByMobile.size() > 0)
-								{
-									isDuplicate = true;
-								}
-							}
-							if(!isDuplicate && cleanPhone != "")
-							{
-								existingByPhone = zoho.crm.searchRecords("Leads", "(Phone:equals:" + cleanPhone + ")");
-								if(existingByPhone != null && existingByPhone.size() > 0)
-								{
-									isDuplicate = true;
-								}
-							}
-
-							if(isDuplicate)
-							{
-								totalSkipped = totalSkipped + 1;
-								continue;
-							}
-
-							// Insert to Zoho
-							leadMap = Map();
-							leadMap.put("Last_Name", if(rawName != "", rawName, "Decision Maker"));
-							leadMap.put("Company", cleanCompany);
-							if(cleanEmail != "") { leadMap.put("Email", cleanEmail); }
-							if(cleanPhone != "") { leadMap.put("Phone", cleanPhone); }
-							if(cleanMobile != "") { leadMap.put("Mobile", cleanMobile); }
-							leadMap.put("Industry", if(rawIndustry != "", rawIndustry, "IT / Software"));
-							leadMap.put("Lead_Source", leadSource);
-							leadMap.put("Description", "Uploaded: " + uploadTime + " | Scraped Date: " + scrapDate + " | Notes: " + rawNotes);
-
-							createRes = zoho.crm.createRecord("Leads", leadMap);
-							totalImported = totalImported + 1;
+							cleanEmail = rawEmail.replaceAll("mailto:", "").replaceAll("<", "").replaceAll(">", "").trim();
 						}
+
+						// Phone Validation
+						cleanPhone = rawPhone.replaceAll("[^0-9+ ]", "").trim();
+						cleanMobile = "";
+						if(cleanPhone.startsWith("04") || cleanPhone.startsWith("+614") || cleanPhone.startsWith("614"))
+						{
+							cleanMobile = cleanPhone;
+							cleanPhone = "";
+						}
+
+						// MANDATORY: Must have Email AND (Phone or Mobile)
+						if(cleanEmail == "" || (cleanPhone == "" && cleanMobile == ""))
+						{
+							totalInvalid = totalInvalid + 1;
+							continue;
+						}
+
+						// Company Name Sanitization
+						cleanCompany = rawCompany;
+						if(cleanCompany == "" || genericTitles.contains(cleanCompany.toLowerCase()) || cleanCompany.length() < 2)
+						{
+							cleanCompany = "Australian Enterprise";
+						}
+
+						// Direct Insert to Zoho CRM (Zoho handles dedup internally)
+						leadMap = Map();
+						leadMap.put("Last_Name", if(rawName != "", rawName, "Decision Maker"));
+						leadMap.put("Company", cleanCompany);
+						if(cleanEmail != "") { leadMap.put("Email", cleanEmail); }
+						if(cleanPhone != "") { leadMap.put("Phone", cleanPhone); }
+						if(cleanMobile != "") { leadMap.put("Mobile", cleanMobile); }
+						leadMap.put("Industry", if(rawIndustry != "", rawIndustry, "IT / Software"));
+						leadMap.put("Lead_Source", leadSource);
+						leadMap.put("Description", "Uploaded: " + uploadTime + " | Scraped Date: " + scrapDate + " | Notes: " + rawNotes);
+
+						createRes = zoho.crm.createRecord("Leads", leadMap);
+						totalImported = totalImported + 1;
 					}
 				}
 			}
 		}
-		catch (errCode) 
-		{ 
-			info "❌ Error Web Leads: " + errCode; 
-		}
+	}
+	catch (errCode) 
+	{ 
+		info "❌ Error Web Leads: " + errCode; 
 	}
 
 	// ==============================================================================
@@ -182,139 +114,97 @@ void schedule.sync_google_sheets_to_zoho_crm()
 	// ==============================================================================
 	socialSheetId = "1P9LOyq4UKwVuc8ZFjg6cOlb2fwOci3nUV300E5J5Fgw";
 	socialGid = "1029677902";
-	socialOffsets = {0, 100, 200, 300};
 
-	for each sOffset in socialOffsets
+	socialCsvUrl = "https://docs.google.com/spreadsheets/d/" + socialSheetId + "/gviz/tq?tqx=out:csv&gid=" + socialGid;
+	try 
 	{
-		sQueryStr = "limit 100 offset " + sOffset;
-		encodedSQuery = zoho.encryption.urlEncode(sQueryStr);
-		socialCsvUrl = "https://docs.google.com/spreadsheets/d/" + socialSheetId + "/gviz/tq?tqx=out:csv&gid=" + socialGid + "&tq=" + encodedSQuery;
+		socialResp = invokeurl
+		[
+			url :socialCsvUrl
+			type :GET
+			detailed :true
+		];
+		socialCsvText = socialResp.get("responseText");
+		if(socialCsvText == null || socialCsvText == "") { socialCsvText = socialResp.get("response_text"); }
+		if(socialCsvText == null || socialCsvText == "") { socialCsvText = "" + socialResp.get("response"); }
 
-		try 
+		if(socialCsvText != "" && socialCsvText != null)
 		{
-			socialResp = invokeurl
-			[
-				url :socialCsvUrl
-				type :GET
-				detailed :true
-			];
-			socialCsvText = socialResp.get("responseText");
-			if(socialCsvText == null || socialCsvText == "") { socialCsvText = socialResp.get("response_text"); }
-			if(socialCsvText == null || socialCsvText == "") { socialCsvText = "" + socialResp.get("response"); }
+			socialRows = socialCsvText.replaceAll("\r","").toList("\n");
+			info "📦 [Social Leads] Fetched " + socialRows.size() + " lines.";
 
-			if(socialCsvText != "" && socialCsvText != null)
+			if(socialRows.size() > 1)
 			{
-				socialRows = socialCsvText.replaceAll("\r","").toList("\n");
-				info "📦 [Social Leads Offset " + sOffset + "] Fetched " + socialRows.size() + " lines.";
-
-				if(socialRows.size() > 1)
+				isSHeader = true;
+				for each sRow in socialRows
 				{
-					isSHeader = true;
-					for each sRow in socialRows
+					if(isSHeader) { isSHeader = false; continue; }
+					if(sRow.trim() == "") { continue; }
+
+					sCols = sRow.replaceAll("\",\"", "###SPLIT###").toList("###SPLIT###");
+					if(sCols.size() >= 5)
 					{
-						if(isSHeader) { isSHeader = false; continue; }
-						if(sRow.trim() == "") { continue; }
+						totalProcessed = totalProcessed + 1;
 
-						sCols = sRow.replaceAll("\",\"", "###SPLIT###").toList("###SPLIT###");
-						if(sCols.size() >= 5)
+						sDate = if(sCols.size() > 0, sCols.get(0).replaceAll("\"","").trim(), uploadDate);
+						sPlatform = if(sCols.size() > 1, sCols.get(1).replaceAll("\"","").trim(), "LinkedIn");
+						sRawCompany = if(sCols.size() > 2, sCols.get(2).replaceAll("\"","").trim(), "");
+						sRawEmail = if(sCols.size() > 3, sCols.get(3).replaceAll("\"","").trim().toLowerCase(), "");
+						sRawPhone = if(sCols.size() > 4, sCols.get(4).replaceAll("\"","").trim(), "");
+						sIndustry = if(sCols.size() > 5, sCols.get(5).replaceAll("\"","").trim(), "IT / Software");
+						sName = if(sCols.size() > 6, sCols.get(6).replaceAll("\"","").trim(), "Founder / Executive");
+						sNotes = if(sCols.size() > 9, sCols.get(9).replaceAll("\"","").trim(), "");
+
+						// Email Validation
+						sCleanEmail = "";
+						if(sRawEmail.contains("@") && sRawEmail.contains(".") && !sRawEmail.contains("example.com") && !sRawEmail.endsWith(".png") && !sRawEmail.endsWith(".jpg"))
 						{
-							totalProcessed = totalProcessed + 1;
-
-							sDate = if(sCols.size() > 0, sCols.get(0).replaceAll("\"","").trim(), uploadDate);
-							sPlatform = if(sCols.size() > 1, sCols.get(1).replaceAll("\"","").trim(), "LinkedIn");
-							sRawCompany = if(sCols.size() > 2, sCols.get(2).replaceAll("\"","").trim(), "");
-							sRawEmail = if(sCols.size() > 3, sCols.get(3).replaceAll("\"","").trim().toLowerCase(), "");
-							sRawPhone = if(sCols.size() > 4, sCols.get(4).replaceAll("\"","").trim(), "");
-							sIndustry = if(sCols.size() > 5, sCols.get(5).replaceAll("\"","").trim(), "IT / Software");
-							sName = if(sCols.size() > 6, sCols.get(6).replaceAll("\"","").trim(), "Founder / Executive");
-							sNotes = if(sCols.size() > 9, sCols.get(9).replaceAll("\"","").trim(), "");
-
-							// Email Validation
-							sCleanEmail = "";
-							if(sRawEmail.contains("@") && sRawEmail.contains(".") && !sRawEmail.contains("example.com") && !sRawEmail.endsWith(".png") && !sRawEmail.endsWith(".jpg"))
-							{
-								sCleanEmail = sRawEmail.replaceAll("mailto:", "").replaceAll("<", "").replaceAll(">", "").trim();
-							}
-
-							// Australian Phone Validation
-							sCleanPhone = "";
-							sCleanMobile = "";
-							sPhoneDigits = sRawPhone.replaceAll("[^0-9]", "");
-
-							if(sPhoneDigits.length() >= 6 && sPhoneDigits.length() <= 12 && !sRawPhone.contains("."))
-							{
-								if(sPhoneDigits.startsWith("04") && sPhoneDigits.length() == 10)
-								{
-									sCleanMobile = sPhoneDigits.subString(0,4) + " " + sPhoneDigits.subString(4,7) + " " + sPhoneDigits.subString(7,10);
-								}
-								else if(sPhoneDigits.startsWith("614") && sPhoneDigits.length() == 11)
-								{
-									sCleanMobile = "+61 4" + sPhoneDigits.subString(3,6) + " " + sPhoneDigits.subString(6,9) + " " + sPhoneDigits.subString(9,11);
-								}
-								else if((sPhoneDigits.startsWith("1300") || sPhoneDigits.startsWith("1800")) && sPhoneDigits.length() == 10)
-								{
-									sCleanPhone = sPhoneDigits.subString(0,4) + " " + sPhoneDigits.subString(4,7) + " " + sPhoneDigits.subString(7,10);
-								}
-								else if(sPhoneDigits.length() == 10 && sPhoneDigits.startsWith("0"))
-								{
-									sCleanPhone = "(" + sPhoneDigits.subString(0,2) + ") " + sPhoneDigits.subString(2,6) + " " + sPhoneDigits.subString(6,10);
-								}
-							}
-
-							// MANDATORY: Must have Email AND (Phone or Mobile)
-							if(sCleanEmail == "" || (sCleanPhone == "" && sCleanMobile == ""))
-							{
-								totalInvalid = totalInvalid + 1;
-								continue;
-							}
-
-							sCleanCompany = sRawCompany;
-							if(sCleanCompany == "" || genericTitles.contains(sCleanCompany.toLowerCase()))
-							{
-								sCleanCompany = "Australian Enterprise";
-							}
-
-							// Deduplication
-							isSDuplicate = false;
-							if(sCleanEmail != "")
-							{
-								sExisting = zoho.crm.searchRecords("Leads", "(Email:equals:" + sCleanEmail + ")");
-								if(sExisting != null && sExisting.size() > 0) { isSDuplicate = true; }
-							}
-							if(!isSDuplicate && sCleanMobile != "")
-							{
-								sExistingMob = zoho.crm.searchRecords("Leads", "(Mobile:equals:" + sCleanMobile + ")");
-								if(sExistingMob != null && sExistingMob.size() > 0) { isSDuplicate = true; }
-							}
-
-							if(isSDuplicate)
-							{
-								totalSkipped = totalSkipped + 1;
-								continue;
-							}
-
-							// Insert to Zoho
-							sLeadMap = Map();
-							sLeadMap.put("Last_Name", if(sName != "", sName, "Executive"));
-							sLeadMap.put("Company", sCleanCompany);
-							if(sCleanEmail != "") { sLeadMap.put("Email", sCleanEmail); }
-							if(sCleanPhone != "") { sLeadMap.put("Phone", sCleanPhone); }
-							if(sCleanMobile != "") { sLeadMap.put("Mobile", sCleanMobile); }
-							sLeadMap.put("Industry", sIndustry);
-							sLeadMap.put("Lead_Source", sPlatform);
-							sLeadMap.put("Description", "Social Lead via " + sPlatform + " | Scraped: " + sDate + " | Notes: " + sNotes);
-
-							sCreateRes = zoho.crm.createRecord("Leads", sLeadMap);
-							totalImported = totalImported + 1;
+							sCleanEmail = sRawEmail.replaceAll("mailto:", "").replaceAll("<", "").replaceAll(">", "").trim();
 						}
+
+						// Phone Validation
+						sCleanPhone = sRawPhone.replaceAll("[^0-9+ ]", "").trim();
+						sCleanMobile = "";
+						if(sCleanPhone.startsWith("04") || sCleanPhone.startsWith("+614") || sCleanPhone.startsWith("614"))
+						{
+							sCleanMobile = sCleanPhone;
+							sCleanPhone = "";
+						}
+
+						// MANDATORY: Must have Email AND (Phone or Mobile)
+						if(sCleanEmail == "" || (sCleanPhone == "" && sCleanMobile == ""))
+						{
+							totalInvalid = totalInvalid + 1;
+							continue;
+						}
+
+						sCleanCompany = sRawCompany;
+						if(sCleanCompany == "" || genericTitles.contains(sCleanCompany.toLowerCase()))
+						{
+							sCleanCompany = "Australian Enterprise";
+						}
+
+						// Insert to Zoho
+						sLeadMap = Map();
+						sLeadMap.put("Last_Name", if(sName != "", sName, "Executive"));
+						sLeadMap.put("Company", sCleanCompany);
+						if(sCleanEmail != "") { sLeadMap.put("Email", sCleanEmail); }
+						if(sCleanPhone != "") { sLeadMap.put("Phone", sCleanPhone); }
+						if(sCleanMobile != "") { sLeadMap.put("Mobile", sCleanMobile); }
+						sLeadMap.put("Industry", sIndustry);
+						sLeadMap.put("Lead_Source", sPlatform);
+						sLeadMap.put("Description", "Social Lead via " + sPlatform + " | Scraped: " + sDate + " | Notes: " + sNotes);
+
+						sCreateRes = zoho.crm.createRecord("Leads", sLeadMap);
+						totalImported = totalImported + 1;
 					}
 				}
 			}
 		}
-		catch (errCode) 
-		{ 
-			info "❌ Error Social Leads: " + errCode; 
-		}
+	}
+	catch (errCode) 
+	{ 
+		info "❌ Error Social Leads: " + errCode; 
 	}
 
 	// ==============================================================================
@@ -327,9 +217,7 @@ void schedule.sync_google_sheets_to_zoho_crm()
 
 	for each mGid in multiGids
 	{
-		mQueryStr = "limit 100 offset 0";
-		mEncodedQuery = zoho.encryption.urlEncode(mQueryStr);
-		mCsvUrl = "https://docs.google.com/spreadsheets/d/" + multiSheetId + "/gviz/tq?tqx=out:csv&gid=" + mGid + "&tq=" + mEncodedQuery;
+		mCsvUrl = "https://docs.google.com/spreadsheets/d/" + multiSheetId + "/gviz/tq?tqx=out:csv&gid=" + mGid;
 
 		try
 		{
@@ -380,38 +268,14 @@ void schedule.sync_google_sheets_to_zoho_crm()
 								mCleanEmail = mEmailRaw.replaceAll("mailto:", "").replaceAll("<", "").replaceAll(">", "").trim();
 							}
 
-							// Phone & Mobile Validation
-							mCleanPhone = "";
-							mCleanMobile = "";
-							mPhoneDigits = mPhoneRaw.replaceAll("[^0-9]", "");
-							mMobileDigits = mMobileRaw.replaceAll("[^0-9]", "");
+							// Phone & Mobile Cleaning
+							mCleanPhone = mPhoneRaw.replaceAll("[^0-9+ ]", "").trim();
+							mCleanMobile = mMobileRaw.replaceAll("[^0-9+ ]", "").trim();
 
-							if(mPhoneDigits.length() >= 6 && mPhoneDigits.length() <= 12)
+							if(mCleanPhone.startsWith("04") || mCleanPhone.startsWith("+614") || mCleanPhone.startsWith("614"))
 							{
-								if(mPhoneDigits.startsWith("04") && mPhoneDigits.length() == 10)
-								{
-									mCleanMobile = mPhoneDigits.subString(0,4) + " " + mPhoneDigits.subString(4,7) + " " + mPhoneDigits.subString(7,10);
-								}
-								else if(mPhoneDigits.length() == 10 && mPhoneDigits.startsWith("0"))
-								{
-									mCleanPhone = "(" + mPhoneDigits.subString(0,2) + ") " + mPhoneDigits.subString(2,6) + " " + mPhoneDigits.subString(6,10);
-								}
-								else if(mPhoneDigits.length() >= 8)
-								{
-									mCleanPhone = mPhoneDigits;
-								}
-							}
-
-							if(mCleanMobile == "" && mMobileDigits.length() >= 6 && mMobileDigits.length() <= 12)
-							{
-								if(mMobileDigits.startsWith("04") && mMobileDigits.length() == 10)
-								{
-									mCleanMobile = mMobileDigits.subString(0,4) + " " + mMobileDigits.subString(4,7) + " " + mMobileDigits.subString(7,10);
-								}
-								else if(mMobileDigits.length() >= 8)
-								{
-									mCleanMobile = mMobileDigits;
-								}
+								if(mCleanMobile == "") { mCleanMobile = mCleanPhone; }
+								mCleanPhone = "";
 							}
 
 							// MANDATORY: Must have Email AND (Phone or Mobile)
@@ -427,26 +291,7 @@ void schedule.sync_google_sheets_to_zoho_crm()
 								mCleanCompany = "Australian Enterprise";
 							}
 
-							// Deduplication
-							isMDuplicate = false;
-							if(mCleanEmail != "")
-							{
-								mExisting = zoho.crm.searchRecords("Leads", "(Email:equals:" + mCleanEmail + ")");
-								if(mExisting != null && mExisting.size() > 0) { isMDuplicate = true; }
-							}
-							if(!isMDuplicate && mCleanMobile != "")
-							{
-								mExistingMob = zoho.crm.searchRecords("Leads", "(Mobile:equals:" + mCleanMobile + ")");
-								if(mExistingMob != null && mExistingMob.size() > 0) { isMDuplicate = true; }
-							}
-
-							if(isMDuplicate)
-							{
-								totalSkipped = totalSkipped + 1;
-								continue;
-							}
-
-							// Insert to Zoho
+							// Insert directly to Zoho CRM (Zoho automatically handles deduplication based on unique Email/Phone rules)
 							mLeadMap = Map();
 							mLeadMap.put("Last_Name", if(mName != "", mName, "Executive"));
 							mLeadMap.put("Company", mCleanCompany);
