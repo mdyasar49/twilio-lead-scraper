@@ -140,12 +140,12 @@ class CrmSyncEngine:
             print(f"[!] Error fetching sheet {spreadsheet_id}: {e}")
         return []
 
-    def sync_leads_to_zoho(self, leads_data):
-        """Pushes a batch of leads to Zoho CRM."""
+    def sync_leads_to_zoho_batch(self, leads_data):
+        """Pushes a chunk of up to 100 leads to Zoho CRM."""
         zoho_token = self.get_zoho_token()
         if not zoho_token:
             print("[!] Cannot sync to Zoho: Missing token.")
-            return []
+            return False
 
         url = "https://www.zohoapis.in/crm/v2/Leads"
         headers = {
@@ -156,39 +156,40 @@ class CrmSyncEngine:
         records = []
         for item in leads_data:
             records.append({
-                "Company": item.get("company") or "Business Owner",
-                "Last_Name": item.get("name") or "Contact",
-                "Email": item.get("email", ""),
-                "Phone": item.get("phone", ""),
-                "Lead_Source": item.get("source", "Lead Scraper Suite"),
-                "Industry": item.get("industry", "IT / Software"),
-                "Description": item.get("notes", "Scraped via Twilio Lead Scraper")
+                "Company": (item.get("company") or "Business Owner")[:100],
+                "Last_Name": (item.get("name") or "Contact")[:100],
+                "Email": item.get("email", "")[:100],
+                "Phone": item.get("phone", "")[:50],
+                "Lead_Source": item.get("source", "Lead Scraper Suite")[:100],
+                "Industry": item.get("industry", "IT / Software")[:100],
+                "Description": (item.get("notes", "Scraped via Twilio Lead Scraper"))[:250]
             })
 
         if not records:
-            return []
+            return False
 
         try:
-            res = requests.post(url, headers=headers, json={"data": records}, timeout=20)
+            res = requests.post(url, headers=headers, json={"data": records}, timeout=25)
             if res.status_code in [200, 201]:
                 data = res.json()
-                print(f"[✅] Zoho CRM Sync Response: {len(data.get('data', []))} records pushed.")
-                return data.get("data", [])
+                successful = sum(1 for d in data.get("data", []) if d.get("status") == "success" or d.get("code") == "SUCCESS")
+                print(f"[✅] Zoho CRM Batch: {successful}/{len(records)} records synced.")
+                return True
             else:
                 print(f"[!] Zoho Push Error {res.status_code}: {res.text}")
+                return False
         except Exception as e:
             print(f"[!] Zoho Sync Exception: {e}")
-        return []
+            return False
 
     def sync_sheet(self, spreadsheet_id, tab_name):
-        """Syncs all un-synced leads in a given Google Sheet to Zoho CRM."""
+        """Syncs un-synced leads in chunks of 100 to Zoho CRM."""
         print(f"[*] Checking un-synced leads in Sheet [{spreadsheet_id}] Tab [{tab_name}]...")
         rows = self.fetch_sheet_rows(spreadsheet_id, tab_name)
         if not rows or len(rows) <= 1:
             print("[-] No rows found.")
             return
 
-        headers = rows[0]
         leads_to_sync = []
         row_indices = []
 
@@ -211,32 +212,38 @@ class CrmSyncEngine:
                 row_indices.append(idx)
 
         print(f"[+] Found {len(leads_to_sync)} leads ready for Zoho CRM sync.")
-        if leads_to_sync:
-            # Batch sync to Zoho
-            self.sync_leads_to_zoho(leads_to_sync)
+        if not leads_to_sync:
+            return
 
-            # Mark rows as Synced in Google Sheets
-            token = self.get_google_access_token()
-            if token:
-                today_str = datetime.date.today().strftime("%d/%m/%Y")
-                batch_updates = []
-                for row_idx in row_indices:
-                    batch_updates.append({
-                        "range": f"{tab_name}!K{row_idx}",
-                        "values": [[f"✅ Synced {today_str}"]]
-                    })
+        # Process in batches of 100
+        batch_size = 100
+        total_batches = (len(leads_to_sync) + batch_size - 1) // batch_size
+        today_str = datetime.date.today().strftime("%d/%m/%Y")
+        token = self.get_google_access_token()
 
+        for b in range(total_batches):
+            chunk = leads_to_sync[b * batch_size : (b + 1) * batch_size]
+            chunk_indices = row_indices[b * batch_size : (b + 1) * batch_size]
+
+            success = self.sync_leads_to_zoho_batch(chunk)
+            if success and token:
+                batch_updates = [
+                    {"range": f"{tab_name}!K{r}", "values": [[f"✅ Synced {today_str}"]]}
+                    for r in chunk_indices
+                ]
                 update_url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values:batchUpdate"
-                requests.post(
-                    update_url,
-                    headers={"Authorization": f"Bearer {token}"},
-                    json={
-                        "valueInputOption": "USER_ENTERED",
-                        "data": batch_updates
-                    },
-                    timeout=15
-                )
-                print(f"[✅] Marked {len(row_indices)} rows as Synced in Sheet [{tab_name}].")
+                try:
+                    requests.post(
+                        update_url,
+                        headers={"Authorization": f"Bearer {token}"},
+                        json={"valueInputOption": "USER_ENTERED", "data": batch_updates},
+                        timeout=15
+                    )
+                except Exception:
+                    pass
+            time.sleep(0.5)
+
+        print(f"[🎉] Completed sync for Sheet [{tab_name}].")
 
     def run_all(self):
         """Runs sync for both Web Leads and Social Leads sheets."""
