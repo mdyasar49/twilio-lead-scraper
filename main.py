@@ -2,15 +2,8 @@
 =============================================================================
 INFOGENX TWILIO LEAD SCRAPER & CRM ENGINE - MAIN RUNNER
 =============================================================================
-CLI entrypoint to execute Web Scraping (Code.gs), Social Scraping (SocialScraper.gs),
-Combined Multi-Engine Scraping, or Zoho CRM Synchronization.
-
-Usage:
-  python main.py --mode web          # Scrapes B2B Web Leads -> Leads tab (Code.gs)
-  python main.py --mode social       # Scrapes Social Media Leads -> Social Leads tab (SocialScraper.gs)
-  python main.py --mode all          # Runs both Web & Social Scrapers concurrently
-  python main.py --mode sync-crm     # Syncs un-synced leads from Google Sheets to Zoho CRM
-  python main.py --mode daemon --interval 60 # Continuous background execution every X minutes
+CLI entrypoint to execute Web Scraping, Social Scraping, Multi-Engine Scraping,
+Google Sheets Sync, and DIRECT ZOHO CRM API Upload.
 =============================================================================
 """
 
@@ -18,11 +11,10 @@ import sys
 import os
 import time
 import argparse
+import subprocess
 
-# Ensure local modules are found
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Ensure UTF-8 output on Windows
 if sys.stdout.encoding != "utf-8":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -37,32 +29,42 @@ from scrapers import (
     CrmSyncEngine
 )
 
+def run_direct_zoho_upload():
+    """Executes direct Zoho CRM API batch upload for all 5 spreadsheets and 21 tabs."""
+    print("\n" + "=" * 80)
+    print("🚀 Triggering Direct Zoho CRM API Batch Upload...")
+    print("=" * 80)
+    uploader_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload_all_sheets_direct_to_zoho.py")
+    if os.path.exists(uploader_script):
+        try:
+            subprocess.run([sys.executable, uploader_script], check=True)
+        except Exception as e:
+            print(f"[!] Direct Zoho API Upload exception: {e}")
+    else:
+        engine = CrmSyncEngine()
+        engine.run_all()
 
 def run_web(limit=None):
     scraper = WebLeadScraper()
-    return scraper.run(max_industries=limit)
-
+    res = scraper.run(max_industries=limit)
+    run_direct_zoho_upload()
+    return res
 
 def run_social(limit=None):
     scraper = SocialLeadScraper()
-    return scraper.run(max_targets=limit)
-
+    res = scraper.run(max_targets=limit)
+    run_direct_zoho_upload()
+    return res
 
 def run_all(limit=None, sync_crm=True):
     scraper = WebSocialScraper()
     res = scraper.run_all(max_web_industries=limit, max_social_targets=limit)
     if sync_crm:
-        print("\n" + "=" * 80)
-        print("🔄 Automatically syncing verified leads to Zoho CRM...")
-        print("=" * 80)
-        run_crm_sync()
+        run_direct_zoho_upload()
     return res
 
-
 def run_crm_sync():
-    engine = CrmSyncEngine()
-    engine.run_all()
-
+    run_direct_zoho_upload()
 
 def run_daemon(interval_minutes=60):
     print("=" * 80)
@@ -72,14 +74,11 @@ def run_daemon(interval_minutes=60):
         try:
             print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting scheduled scraping & sync cycle...")
             run_all()
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Scraping complete. Running CRM Sync...")
-            run_crm_sync()
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cycle finished. Sleeping for {interval_minutes} minutes.\n")
         except Exception as e:
             print(f"[!] Error during daemon cycle: {e}")
 
         time.sleep(interval_minutes * 60)
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -93,10 +92,10 @@ def main():
         default="all",
         help=(
             "Execution mode:\n"
-            "  web      : Scrapes Google & B2B Web Leads (for Code.gs sheet)\n"
-            "  social   : Scrapes Social Media Leads (for SocialScraper.gs sheet)\n"
-            "  all      : Runs both Web & Social Scrapers concurrently\n"
-            "  sync-crm : Syncs un-synced leads from Google Sheets to Zoho CRM\n"
+            "  web      : Scrapes Google & B2B Web Leads -> Google Sheets -> Zoho CRM\n"
+            "  social   : Scrapes Social Media Leads -> Google Sheets -> Zoho CRM\n"
+            "  all      : Runs Web & Social Scrapers concurrently -> Google Sheets -> Zoho CRM\n"
+            "  sync-crm : Uploads all 5 spreadsheets (21 tabs) directly to Zoho CRM API\n"
             "  daemon   : Runs on scheduled timer in background"
         )
     )
@@ -125,7 +124,6 @@ def main():
         run_crm_sync()
     elif args.mode == "daemon":
         run_daemon(args.interval)
-
 
 if __name__ == "__main__":
     main()
