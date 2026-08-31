@@ -1,15 +1,4 @@
-/*
-================================================================================
-ZOHO CRM DELUGE AUTOMATED SYNC SCRIPT - ENTERPRISE AUSTRALIAN LEAD VALIDATION
-================================================================================
-Function Name: schedule.sync_google_sheets_to_zoho_crm
-Description  : Syncs verified Australian leads from Google Sheets (Web Leads & Social Leads)
-               to Zoho CRM with strict Email & Australian Phone/Mobile validation,
-               company name cleaning, and duplicate prevention.
-================================================================================
-*/
-
-void schedule.sync_google_sheets_to_zoho_crm()
+void sync_google_sheets_to_zoho_crm()
 {
 	totalImported = 0;
 	totalSkipped = 0;
@@ -85,10 +74,8 @@ void schedule.sync_google_sheets_to_zoho_crm()
 							cleanMobile = "";
 							phoneDigits = rawPhone.replaceAll("[^0-9]", "");
 
-							// Filter out decimals (e.g. 33.3333) or too short/long numbers
 							if(phoneDigits.length() >= 6 && phoneDigits.length() <= 12 && !rawPhone.contains("."))
 							{
-								// Australian Mobile (starts with 04 or 614)
 								if(phoneDigits.startsWith("04") && phoneDigits.length() == 10)
 								{
 									cleanMobile = phoneDigits.subString(0,4) + " " + phoneDigits.subString(4,7) + " " + phoneDigits.subString(7,10);
@@ -97,34 +84,28 @@ void schedule.sync_google_sheets_to_zoho_crm()
 								{
 									cleanMobile = "+61 4" + phoneDigits.subString(3,6) + " " + phoneDigits.subString(6,9) + " " + phoneDigits.subString(9,11);
 								}
-								// Australian 1300 / 1800 Numbers
 								else if((phoneDigits.startsWith("1300") || phoneDigits.startsWith("1800")) && phoneDigits.length() == 10)
 								{
 									cleanPhone = phoneDigits.subString(0,4) + " " + phoneDigits.subString(4,7) + " " + phoneDigits.subString(7,10);
 								}
-								// Australian 13 Priority Number (6 digits)
 								else if(phoneDigits.startsWith("13") && phoneDigits.length() == 6)
 								{
 									cleanPhone = phoneDigits.subString(0,2) + " " + phoneDigits.subString(2,4) + " " + phoneDigits.subString(4,6);
 								}
-								// Australian Landline (02, 03, 07, 08)
 								else if(phoneDigits.length() == 10 && phoneDigits.startsWith("0") && (phoneDigits.startsWith("02") || phoneDigits.startsWith("03") || phoneDigits.startsWith("07") || phoneDigits.startsWith("08")))
 								{
 									cleanPhone = "(" + phoneDigits.subString(0,2) + ") " + phoneDigits.subString(2,6) + " " + phoneDigits.subString(6,10);
 								}
-								// International Format Australian (+61 2/3/7/8)
 								else if(phoneDigits.startsWith("61") && phoneDigits.length() == 11)
 								{
 									cleanPhone = "+61 " + phoneDigits.subString(2,3) + " " + phoneDigits.subString(3,7) + " " + phoneDigits.subString(7,11);
 								}
-								// 8-digit Local Australian Number
 								else if(phoneDigits.length() == 8)
 								{
 									cleanPhone = phoneDigits.subString(0,4) + " " + phoneDigits.subString(4,8);
 								}
 							}
 
-							// Check if at least one contact method is valid
 							if(cleanEmail == "" && cleanPhone == "" && cleanMobile == "")
 							{
 								totalInvalid = totalInvalid + 1;
@@ -263,7 +244,7 @@ void schedule.sync_google_sheets_to_zoho_crm()
 							{
 								if(sPhoneDigits.startsWith("04") && sPhoneDigits.length() == 10)
 								{
-									sCleanMobile = sPhoneDigits.subString(0,4) + " " + phoneDigits.subString(4,7) + " " + phoneDigits.subString(7,10);
+									sCleanMobile = sPhoneDigits.subString(0,4) + " " + sPhoneDigits.subString(4,7) + " " + sPhoneDigits.subString(7,10);
 								}
 								else if(sPhoneDigits.startsWith("614") && sPhoneDigits.length() == 11)
 								{
