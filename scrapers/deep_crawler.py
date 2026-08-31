@@ -25,7 +25,7 @@ except ImportError:
 
 
 class DeepContactCrawler:
-    def __init__(self, timeout=8):
+    def __init__(self, timeout=3):
         self.timeout = timeout
         self.headers = {
             "User-Agent": (
@@ -101,7 +101,7 @@ class DeepContactCrawler:
     def crawl_url(self, target_url):
         """
         Crawls the landing page and searches for contact info.
-        If contact info is sparse, probes /contact and /about.
+        Uses connect and read timeouts (2, 3) to prevent hanging.
         """
         if not target_url or not self.is_valid_domain(target_url):
             return {"emails": [], "phones": [], "company_name": "", "contact_name": ""}
@@ -114,9 +114,9 @@ class DeepContactCrawler:
         }
 
         try:
-            resp = requests.get(target_url, headers=self.headers, timeout=self.timeout, allow_redirects=True)
+            resp = requests.get(target_url, headers=self.headers, timeout=(2, 3), allow_redirects=True)
             if resp.status_code == 200:
-                html = resp.text
+                html = resp.text[:150000] # Limit parsing to first 150KB for speed
                 soup = BeautifulSoup(html, "html.parser")
                 text = soup.get_text(" ", strip=True)
 
@@ -127,35 +127,28 @@ class DeepContactCrawler:
                 # Extract company name from title / meta
                 if soup.title and soup.title.string:
                     raw_title = soup.title.string.strip()
-                    # Clean up common title suffixes
                     company = re.split(r"[-|–—•:]", raw_title)[0].strip()
                     if company and len(company) < 50:
                         results["company_name"] = company
 
-                # If no emails or phones found, look for /contact or /about subpage
+                # If no emails or phones found, look for at most 1 /contact or /about subpage
                 if not results["emails"] or not results["phones"]:
-                    contact_links = []
                     for a_tag in soup.find_all("a", href=True):
                         href = a_tag["href"].lower()
-                        if any(keyword in href for keyword in ["contact", "about", "team", "get-in-touch"]):
+                        if any(keyword in href for keyword in ["contact", "about"]):
                             full_url = urljoin(target_url, a_tag["href"])
                             if self.is_valid_domain(full_url) and full_url != target_url:
-                                contact_links.append(full_url)
-                                if len(contact_links) >= 2:
-                                    break
-
-                    for sub_url in contact_links:
-                        try:
-                            sub_resp = requests.get(sub_url, headers=self.headers, timeout=self.timeout)
-                            if sub_resp.status_code == 200:
-                                sub_html = sub_resp.text
-                                sub_soup = BeautifulSoup(sub_html, "html.parser")
-                                sub_text = sub_soup.get_text(" ", strip=True)
-                                results["emails"].extend(self.extract_emails(sub_text, sub_html))
-                                results["phones"].extend(self.extract_phones(sub_text, sub_html))
-                        except Exception:
-                            pass
-
+                                try:
+                                    sub_resp = requests.get(full_url, headers=self.headers, timeout=(2, 2))
+                                    if sub_resp.status_code == 200:
+                                        sub_html = sub_resp.text[:150000]
+                                        sub_soup = BeautifulSoup(sub_html, "html.parser")
+                                        sub_text = sub_soup.get_text(" ", strip=True)
+                                        results["emails"].extend(self.extract_emails(sub_text, sub_html))
+                                        results["phones"].extend(self.extract_phones(sub_text, sub_html))
+                                        break
+                                except Exception:
+                                    pass
         except Exception:
             pass
 

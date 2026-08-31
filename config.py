@@ -114,14 +114,16 @@ WEB_INDUSTRIES = [
 # Social Platforms, Triggers & Search Queries
 # ---------------------------------------------------------------------------
 SOCIAL_PLATFORMS = [
-    ("LinkedIn", "coming soon", "Australia", "IT / Software"),
-    ("LinkedIn", "we are launching", "Australia", "IT / Software"),
-    ("LinkedIn", "Founder", "Australia", "Consulting"),
+    ("LinkedIn", "Founder", "Australia", "IT / Software"),
     ("LinkedIn", "Managing Director", "Australia", "Real Estate"),
-    ("Reddit", "launching soon", "Australia", "Retail / E-commerce"),
-    ("X (Twitter)", "new launch", "Australia", "IT / Software"),
+    ("LinkedIn", "CEO", "Australia", "Healthcare"),
+    ("LinkedIn", "Director", "Australia", "Consulting"),
+    ("LinkedIn", "Business Owner", "Australia", "Professional Services"),
+    ("LinkedIn", "we are launching", "Australia", "IT / Software"),
     ("Facebook", "grand opening", "Australia", "Healthcare"),
-    ("Instagram", "pre-launch", "Australia", "Retail / E-commerce")
+    ("Instagram", "Founder", "Australia", "Retail / E-commerce"),
+    ("X (Twitter)", "launching", "Australia", "IT / Software"),
+    ("Reddit", "launching soon", "Australia", "Retail / E-commerce")
 ]
 
 SOCIAL_LAUNCH_KEYWORDS = [
@@ -166,12 +168,11 @@ EMAIL_REGEX = re.compile(
 
 # Australian Phone Patterns
 AU_PHONE_PATTERNS = [
-    re.compile(r"(\+?61[\s.-]?4\d{2}[\s.-]?\d{3}[\s.-]?\d{3})"),
-    re.compile(r"(04\d{2}[\s.-]?\d{3}[\s.-]?\d{3})"),
-    re.compile(r"(\+?61[\s.-]?[2378][\s.-]?\d{4}[\s.-]?\d{4})"),
-    re.compile(r"(0[2378][\s.-]?\d{4}[\s.-]?\d{4})"),
-    re.compile(r"(1300[\s.-]?\d{3}[\s.-]?\d{3})"),
-    re.compile(r"(1800[\s.-]?\d{3}[\s.-]?\d{3})")
+    re.compile(r"\(?0[2378]\)?[\s.-]?\d{4}[\s.-]?\d{4}"),
+    re.compile(r"\+?61[\s.-]?\(?0?[2378]\)?[\s.-]?\d{4}[\s.-]?\d{4}"),
+    re.compile(r"\+?61[\s.-]?4\d{2}[\s.-]?\d{3}[\s.-]?\d{3}"),
+    re.compile(r"04\d{2}[\s.-]?\d{3}[\s.-]?\d{3}"),
+    re.compile(r"1[38]00[\s.-]?\d{3}[\s.-]?\d{3}")
 ]
 
 # Generic International Phone Pattern

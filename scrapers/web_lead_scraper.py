@@ -57,6 +57,12 @@ except ImportError:
     from scrapers.deep_crawler import DeepContactCrawler
 
 
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 class WebLeadScraper:
     def __init__(self):
         self.crawler = DeepContactCrawler()
@@ -117,7 +123,7 @@ class WebLeadScraper:
         api_key = SERPER_API_KEYS[0]
         url = "https://google.serper.dev/search"
         payload = {
-            "q": f"{query} {location}",
+            "q": query,
             "gl": "au" if "australia" in location.lower() else "us",
             "num": num
         }
@@ -171,12 +177,12 @@ class WebLeadScraper:
                             "source": "DuckDuckGo"
                         })
         except Exception as e:
-            print(f"[!] DuckDuckGo error: {e}")
+            pass
 
         return leads
 
     def search_gemini_grounding(self, query, location=DEFAULT_LOCATION):
-        """Uses Google Gemini Grounding API to discover verified B2B leads."""
+        """Uses Google Gemini Grounding API if valid key is provided."""
         leads = []
         if not GEMINI_API_KEYS:
             return leads
@@ -195,7 +201,7 @@ class WebLeadScraper:
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {"responseMimeType": "application/json"}
             }
-            res = requests.post(url, json=payload, timeout=15)
+            res = requests.post(url, json=payload, timeout=10)
             if res.status_code == 200:
                 data = res.json()
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
@@ -212,28 +218,43 @@ class WebLeadScraper:
                             "notes": item.get("notes", "Discovered via Gemini Grounding"),
                             "source": "Gemini AI"
                         })
-        except Exception as e:
-            print(f"[!] Gemini Search error: {e}")
+        except Exception:
+            pass
 
         return leads
 
     def scrape_industry(self, industry, role, location=DEFAULT_LOCATION):
         """Scrapes and compiles leads for a specific industry and role."""
         print(f"[*] Scraping Web Leads for [{industry}] - [{role}] in {location}...")
-        query = f'"{role}" "{industry}" email contact'
         
-        # 1. Search via Serper Google API
-        raw_results = self.search_serper(query, location)
+        # Multi-tiered high-yield queries
+        queries = [
+            f'site:.com.au "{industry}" "contact us" phone email',
+            f'"{industry}" companies {location} contact email phone',
+            f'"{role}" "{industry}" {location} email contact'
+        ]
         
-        # 2. Fallback / Supplement with DuckDuckGo
-        if len(raw_results) < 5:
-            raw_results.extend(self.search_duckduckgo_lite(query, location))
+        raw_results = []
+        for q in queries:
+            results = self.search_serper(q, location, num=15)
+            if results:
+                raw_results.extend(results)
+            else:
+                raw_results.extend(self.search_duckduckgo_lite(q, location))
 
-        # 3. Process raw search results and deep crawl landing pages
+        # Deduplicate raw search results by link
+        seen_links = set()
+        unique_results = []
+        for r in raw_results:
+            link = r.get("link", "")
+            if link and link not in seen_links:
+                seen_links.add(link)
+                unique_results.append(r)
+
         compiled_leads = []
         today_str = datetime.date.today().strftime("%d/%m/%Y")
 
-        for item in raw_results:
+        for item in unique_results:
             link = item.get("link", "")
             title = item.get("title", "")
             snippet = item.get("snippet", "")

@@ -59,6 +59,12 @@ except ImportError:
     from scrapers.deep_crawler import DeepContactCrawler
 
 
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 class SocialLeadScraper:
     def __init__(self):
         self.crawler = DeepContactCrawler()
@@ -128,7 +134,7 @@ class SocialLeadScraper:
         }
         
         site_filter = site_dorks.get(platform, "")
-        dork_query = f'{site_filter} "{keyword}" {location} (email OR contact OR phone OR "gmail.com" OR "com.au")'
+        dork_query = f'{site_filter} "{keyword}" {location}'
 
         api_key = SERPER_API_KEYS[0]
         url = "https://google.serper.dev/search"
@@ -159,6 +165,48 @@ class SocialLeadScraper:
 
         return leads
 
+    def search_gemini_social_grounding(self, platform, keyword, location=DEFAULT_LOCATION, industry="IT / Software"):
+        """Uses Google Gemini Grounding API to discover verified Social Business leads."""
+        leads = []
+        if not GEMINI_API_KEYS:
+            return leads
+
+        api_key = GEMINI_API_KEYS[0]
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        prompt = (
+            f"Find 5 active business founders or companies on {platform} in {location} matching '{keyword}' in {industry}. "
+            "Return a JSON array with objects containing keys: "
+            "'company', 'contact_name', 'email', 'phone', 'social_url', 'industry', 'notes'. "
+            "Only return raw JSON without markdown."
+        )
+
+        try:
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"responseMimeType": "application/json"}
+            }
+            res = requests.post(url, json=payload, timeout=15)
+            if res.status_code == 200:
+                data = res.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    for item in parsed:
+                        leads.append({
+                            "company": item.get("company", ""),
+                            "contact_name": item.get("contact_name", ""),
+                            "email": item.get("email", ""),
+                            "phone": item.get("phone", ""),
+                            "link": item.get("social_url", ""),
+                            "industry": item.get("industry", industry),
+                            "notes": item.get("notes", f"Discovered via Gemini on {platform}"),
+                            "source": platform
+                        })
+        except Exception as e:
+            print(f"[!] Gemini Social Search error: {e}")
+
+        return leads
+
     def scrape_platform_keyword(self, platform, keyword, location=DEFAULT_LOCATION, industry="IT / Software"):
         """Scrapes and compiles leads for a specific social platform and trigger."""
         print(f"[*] Scraping Social Leads on [{platform}] for trigger '{keyword}' in {location}...")
@@ -177,7 +225,6 @@ class SocialLeadScraper:
             phones = self.crawler.extract_phones(snippet)
 
             # Clean company / profile name from title
-            # e.g., "John Doe - Founder - ACME Corp | LinkedIn"
             company_candidate = title
             contact_candidate = "Founder / Decision Maker"
 
@@ -219,6 +266,24 @@ class SocialLeadScraper:
                 f"Social Link: {link} | Trigger: {keyword}"  # Notes
             ]
             compiled_leads.append(lead_row)
+
+        # Supplement with Gemini Social Grounding
+        gemini_social = self.search_gemini_social_grounding(platform, keyword, location, industry)
+        for g in gemini_social:
+            lead_row = [
+                today_str,
+                g.get("source", platform),
+                g.get("company", ""),
+                g.get("email", ""),
+                g.get("phone", ""),
+                g.get("industry", industry),
+                g.get("contact_name", "Decision Maker"),
+                "New",
+                LEAD_ADDED_BY_SOCIAL,
+                f"Social Link: {g.get('link', '')} | {g.get('notes', '')}"
+            ]
+            if lead_row[3] or lead_row[4]:
+                compiled_leads.append(lead_row)
 
         print(f"[+] Found {len(compiled_leads)} verified Social Leads on [{platform}].")
         return compiled_leads
