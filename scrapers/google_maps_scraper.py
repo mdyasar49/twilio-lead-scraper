@@ -137,7 +137,7 @@ class GoogleMapsLeadScraper:
                 except Exception:
                     pass
 
-            contact_info = self.validator.verify_lead(email, clean_phone, require_both=False)
+            contact_info = self.validator.verify_lead(email, clean_phone, require_both=True)
             
             lead_row = [
                 today_str,                                     # Date

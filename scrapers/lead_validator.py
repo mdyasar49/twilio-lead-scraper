@@ -181,7 +181,7 @@ class LeadValidator:
         return ("", "")
 
     @classmethod
-    def verify_lead(cls, email_raw: str, phone_raw: str, require_both: bool = False) -> dict:
+    def verify_lead(cls, email_raw: str, phone_raw: str, require_both: bool = True) -> dict:
         """
         Verifies both email and phone. Returns clean dictionary with validation status:
         {

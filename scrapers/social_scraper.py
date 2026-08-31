@@ -255,7 +255,7 @@ class SocialLeadScraper:
                     if crawl_phones:
                         phone = crawl_phones[0]
 
-            contact_info = self.validator.verify_lead(email, phone, require_both=False)
+            contact_info = self.validator.verify_lead(email, phone, require_both=True)
             if not contact_info["is_valid"]:
                 return None
 
@@ -366,12 +366,17 @@ class SocialLeadScraper:
             email = row[3].strip().lower() if len(row) > 3 and row[3] else ""
             phone = re.sub(r"\D", "", row[4]) if len(row) > 4 and row[4] else ""
 
+            # MANDATORY: Must have BOTH email AND phone
+            if not email or not phone:
+                skipped_count += 1
+                continue
+
             is_duplicate = False
-            if email and email in existing_emails:
+            if email in existing_emails:
                 is_duplicate = True
-            elif phone and len(phone) >= 8 and phone in existing_phones:
+            elif len(phone) >= 8 and phone in existing_phones:
                 is_duplicate = True
-            elif company and len(company) > 3 and company in existing_companies and not email and not phone:
+            elif company and len(company) > 3 and company in existing_companies and email in existing_emails:
                 is_duplicate = True
 
             if not is_duplicate:
