@@ -136,7 +136,7 @@ class SocialLeadScraper:
         
         clean_industry = industry.replace("/", " ").strip()
         site_filter = site_dorks.get(platform, "")
-        dork_query = f'{site_filter} "{keyword}" {clean_industry} {location}'
+        dork_query = f'{site_filter} "{keyword}" {clean_industry} {location} (email OR contact OR phone OR "gmail.com" OR "com.au" OR "+61")'
 
         api_key = SERPER_API_KEYS[0]
         url = "https://google.serper.dev/search"
