@@ -1,0 +1,53 @@
+name: ⏰ 1-Hour Automated Lead Scraper & CRM Sync
+
+on:
+  schedule:
+    # Runs every 1 hour (at minute 0 of every hour)
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  scrape-and-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🔐 Configure Google Service Account & Zoho Credentials
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          ZOHO_CLIENT_JSON: ${{ secrets.ZOHO_CLIENT_JSON }}
+        run: |
+          if [ -n "$GCP_SA_KEY" ]; then
+            echo "$GCP_SA_KEY" > sheet-sync-504707-85df40232946.json
+          fi
+          if [ -n "$ZOHO_CLIENT_JSON" ]; then
+            echo "$ZOHO_CLIENT_JSON" > self_client.json
+          fi
+
+      - name: 🚀 Run Multi-Engine Web & Social Lead Scraper
+        env:
+          SERPER_API_KEYS: ${{ secrets.SERPER_API_KEYS }}
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          WEB_SPREADSHEET_ID: "1CbW9pPLyEtyl8cBpjNDcOEuLLFrgK5LFF8xoPRSMbpw"
+          WEB_TAB_NAME: "Leads"
+          SOCIAL_SPREADSHEET_ID: "1P9LOyq4UKwVuc8ZFjg6cOlb2fwOci3nUV300E5J5Fgw"
+          SOCIAL_TAB_NAME: "Social Leads"
+        run: |
+          python main.py --mode all
+
+      - name: 🔄 Sync Fresh Leads to Zoho CRM
+        run: |
+          python main.py --mode sync-crm

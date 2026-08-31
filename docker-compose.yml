@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  twilio-lead-scraper:
+    build: .
+    container_name: twilio-lead-scraper
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEFAULT_LOCATION=Australia
+      - LEADS_PER_QUERY=30
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
