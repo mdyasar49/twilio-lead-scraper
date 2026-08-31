@@ -106,7 +106,8 @@ void schedule.sync_google_sheets_to_zoho_crm()
 								}
 							}
 
-							if(cleanEmail == "" && cleanPhone == "" && cleanMobile == "")
+							// MANDATORY: Must have Email AND (Phone or Mobile)
+							if(cleanEmail == "" || (cleanPhone == "" && cleanMobile == ""))
 							{
 								totalInvalid = totalInvalid + 1;
 								continue;
@@ -260,7 +261,8 @@ void schedule.sync_google_sheets_to_zoho_crm()
 								}
 							}
 
-							if(sCleanEmail == "" && sCleanPhone == "" && sCleanMobile == "")
+							// MANDATORY: Must have Email AND (Phone or Mobile)
+							if(sCleanEmail == "" || (sCleanPhone == "" && sCleanMobile == ""))
 							{
 								totalInvalid = totalInvalid + 1;
 								continue;
