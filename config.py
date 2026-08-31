@@ -88,7 +88,7 @@ GEMINI_API_KEYS = [
 # ---------------------------------------------------------------------------
 DEFAULT_LOCATION = "Australia"
 TARGET_LOCATIONS = ["Australia", "Brisbane", "Sydney", "Melbourne", "Perth", "Adelaide"]
-LEADS_PER_QUERY = int(os.environ.get("LEADS_PER_QUERY", 30))
+LEADS_PER_QUERY = 10
 LEAD_ADDED_BY_WEB = "Automated Web Scraper"
 LEAD_ADDED_BY_SOCIAL = "Automated Social Scraper"
 

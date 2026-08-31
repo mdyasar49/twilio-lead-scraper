@@ -230,17 +230,19 @@ class WebLeadScraper:
         
         # Clean industry for natural search query (remove slashes)
         clean_industry = industry.replace("/", " ").replace("  ", " ").strip()
+        first_term = clean_industry.split()[0]
         
         # Multi-tiered high-yield queries
         queries = [
             f'site:.com.au {clean_industry} contact phone email',
-            f'site:.com.au {clean_industry} services "contact us"',
-            f'"{clean_industry}" companies {location} contact phone'
+            f'site:.com.au "{first_term}" services contact phone email',
+            f'site:.com.au {clean_industry} "contact us"',
+            f'"{first_term}" companies {location} contact phone'
         ]
         
         raw_results = []
         for q in queries:
-            results = self.search_serper(q, location, num=15)
+            results = self.search_serper(q, location, num=10)
             if results:
                 raw_results.extend(results)
             else:
@@ -258,62 +260,61 @@ class WebLeadScraper:
         compiled_leads = []
         today_str = datetime.date.today().strftime("%d/%m/%Y")
 
-        def process_search_item(item):
+        for item in unique_results:
             link = item.get("link", "")
             title = item.get("title", "")
             snippet = item.get("snippet", "")
             source = item.get("source", "Google Search")
 
             if not self.crawler.is_valid_domain(link):
-                return None
+                continue
 
-            # Deep crawl target website
-            crawl_data = self.crawler.crawl_url(link)
-            
-            emails = crawl_data.get("emails", [])
-            phones = crawl_data.get("phones", [])
-            snippet_emails = self.crawler.extract_emails(snippet)
-            snippet_phones = self.crawler.extract_phones(snippet)
+            try:
+                # Deep crawl target website
+                crawl_data = self.crawler.crawl_url(link)
+                
+                emails = crawl_data.get("emails", [])
+                phones = crawl_data.get("phones", [])
+                snippet_emails = self.crawler.extract_emails(snippet)
+                snippet_phones = self.crawler.extract_phones(snippet)
 
-            all_emails = list(dict.fromkeys(emails + snippet_emails))
-            all_phones = list(dict.fromkeys(phones + snippet_phones))
+                all_emails = list(dict.fromkeys(emails + snippet_emails))
+                all_phones = list(dict.fromkeys(phones + snippet_phones))
 
-            email = all_emails[0] if all_emails else ""
-            phone = all_phones[0] if all_phones else ""
+                email = all_emails[0] if all_emails else ""
+                phone = all_phones[0] if all_phones else ""
 
-            if not email and not phone:
-                return None
+                if not email and not phone:
+                    continue
 
-            company = crawl_data.get("company_name", "") or title.split("-")[0].split("|")[0].split("–")[0].strip()
-            if not company or len(company) < 2:
-                try:
-                    from urllib.parse import urlparse
-                    domain = urlparse(link).netloc.replace("www.", "")
-                    company = domain.split(".")[0].capitalize()
-                except Exception:
-                    company = clean_industry + " Business"
+                company = crawl_data.get("company_name", "") or title.split("-")[0].split("|")[0].split("–")[0].strip()
+                if not company or len(company) < 2:
+                    try:
+                        from urllib.parse import urlparse
+                        domain = urlparse(link).netloc.replace("www.", "")
+                        company = domain.split(".")[0].capitalize()
+                    except Exception:
+                        company = clean_industry + " Business"
 
-            # Contact person name heuristic
-            contact_name = role if role else "Decision Maker"
+                # Contact person name heuristic
+                contact_name = role if role else "Decision Maker"
 
-            return [
-                today_str,                   # Date
-                source,                      # Lead Source
-                company,                     # Company
-                email,                       # Email
-                phone,                       # Phone Number / Mobile Number
-                industry,                    # Industry
-                contact_name,                # Customer Name
-                "New",                       # Status
-                LEAD_ADDED_BY_WEB,           # Lead Added By
-                f"Website: {link}"           # Notes
-            ]
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            results_list = list(executor.map(process_search_item, unique_results[:25]))
-            for res in results_list:
-                if res:
-                    compiled_leads.append(res)
+                lead_row = [
+                    today_str,                   # Date
+                    source,                      # Lead Source
+                    company,                     # Company
+                    email,                       # Email
+                    phone,                       # Phone Number / Mobile Number
+                    industry,                    # Industry
+                    contact_name,                # Customer Name
+                    "New",                       # Status
+                    LEAD_ADDED_BY_WEB,           # Lead Added By
+                    f"Website: {link}"           # Notes
+                ]
+                compiled_leads.append(lead_row)
+                print(f"  [✓] Lead: {company} | Email: {email} | Phone: {phone}")
+            except Exception as e:
+                pass
 
         # 4. Also fetch from Gemini Grounding
         gemini_leads = self.search_gemini_grounding(f"{industry} companies", location)

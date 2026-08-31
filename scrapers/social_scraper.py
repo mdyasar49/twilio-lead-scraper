@@ -273,6 +273,7 @@ class SocialLeadScraper:
             for res in results_list:
                 if res:
                     compiled_leads.append(res)
+                    print(f"  [✓] Social Lead: {res[2]} | Email: {res[3]} | Phone: {res[4]}")
 
         # Supplement with Gemini Social Grounding
         gemini_social = self.search_gemini_social_grounding(platform, keyword, location, industry)
