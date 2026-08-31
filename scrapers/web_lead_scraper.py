@@ -24,6 +24,7 @@ import datetime
 import re
 import requests
 import jwt
+import concurrent.futures
 from urllib.parse import quote_plus
 
 try:
@@ -227,11 +228,14 @@ class WebLeadScraper:
         """Scrapes and compiles leads for a specific industry and role."""
         print(f"[*] Scraping Web Leads for [{industry}] - [{role}] in {location}...")
         
+        # Clean industry for natural search query (remove slashes)
+        clean_industry = industry.replace("/", " ").replace("  ", " ").strip()
+        
         # Multi-tiered high-yield queries
         queries = [
-            f'site:.com.au "{industry}" "contact us" phone email',
-            f'"{industry}" companies {location} contact email phone',
-            f'"{role}" "{industry}" {location} email contact'
+            f'site:.com.au {clean_industry} contact phone email',
+            f'site:.com.au {clean_industry} services "contact us"',
+            f'"{clean_industry}" companies {location} contact phone'
         ]
         
         raw_results = []
@@ -254,42 +258,45 @@ class WebLeadScraper:
         compiled_leads = []
         today_str = datetime.date.today().strftime("%d/%m/%Y")
 
-        for item in unique_results:
+        def process_search_item(item):
             link = item.get("link", "")
             title = item.get("title", "")
             snippet = item.get("snippet", "")
             source = item.get("source", "Google Search")
 
             if not self.crawler.is_valid_domain(link):
-                continue
+                return None
 
             # Deep crawl target website
             crawl_data = self.crawler.crawl_url(link)
             
             emails = crawl_data.get("emails", [])
             phones = crawl_data.get("phones", [])
-            company = crawl_data.get("company_name", "") or title.split("-")[0].split("|")[0].strip()
-            
-            email = emails[0] if emails else ""
-            phone = phones[0] if phones else ""
-            
-            # If no email or phone was extracted from crawl, try snippet
-            if not email:
-                snippet_emails = self.crawler.extract_emails(snippet)
-                if snippet_emails:
-                    email = snippet_emails[0]
-            if not phone:
-                snippet_phones = self.crawler.extract_phones(snippet)
-                if snippet_phones:
-                    phone = snippet_phones[0]
+            snippet_emails = self.crawler.extract_emails(snippet)
+            snippet_phones = self.crawler.extract_phones(snippet)
+
+            all_emails = list(dict.fromkeys(emails + snippet_emails))
+            all_phones = list(dict.fromkeys(phones + snippet_phones))
+
+            email = all_emails[0] if all_emails else ""
+            phone = all_phones[0] if all_phones else ""
 
             if not email and not phone:
-                continue
+                return None
+
+            company = crawl_data.get("company_name", "") or title.split("-")[0].split("|")[0].split("–")[0].strip()
+            if not company or len(company) < 2:
+                try:
+                    from urllib.parse import urlparse
+                    domain = urlparse(link).netloc.replace("www.", "")
+                    company = domain.split(".")[0].capitalize()
+                except Exception:
+                    company = clean_industry + " Business"
 
             # Contact person name heuristic
             contact_name = role if role else "Decision Maker"
 
-            lead_row = [
+            return [
                 today_str,                   # Date
                 source,                      # Lead Source
                 company,                     # Company
@@ -301,7 +308,12 @@ class WebLeadScraper:
                 LEAD_ADDED_BY_WEB,           # Lead Added By
                 f"Website: {link}"           # Notes
             ]
-            compiled_leads.append(lead_row)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            results_list = list(executor.map(process_search_item, unique_results[:25]))
+            for res in results_list:
+                if res:
+                    compiled_leads.append(res)
 
         # 4. Also fetch from Gemini Grounding
         gemini_leads = self.search_gemini_grounding(f"{industry} companies", location)

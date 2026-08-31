@@ -24,6 +24,7 @@ import datetime
 import re
 import requests
 import jwt
+import concurrent.futures
 from urllib.parse import quote_plus
 
 try:
@@ -116,7 +117,7 @@ class SocialLeadScraper:
             print(f"[!] Exception generating Google Access Token: {e}")
             return None
 
-    def search_social_dorks(self, platform, keyword, location=DEFAULT_LOCATION, num=LEADS_PER_QUERY):
+    def search_social_dorks(self, platform, keyword, location=DEFAULT_LOCATION, industry="IT / Software", num=LEADS_PER_QUERY):
         """Builds high-yield social search dorks for Serper.dev."""
         leads = []
         if not SERPER_API_KEYS:
@@ -133,8 +134,9 @@ class SocialLeadScraper:
             "Pinterest": "site:pinterest.com"
         }
         
+        clean_industry = industry.replace("/", " ").strip()
         site_filter = site_dorks.get(platform, "")
-        dork_query = f'{site_filter} "{keyword}" {location}'
+        dork_query = f'{site_filter} "{keyword}" {clean_industry} {location}'
 
         api_key = SERPER_API_KEYS[0]
         url = "https://google.serper.dev/search"
@@ -210,21 +212,19 @@ class SocialLeadScraper:
     def scrape_platform_keyword(self, platform, keyword, location=DEFAULT_LOCATION, industry="IT / Software"):
         """Scrapes and compiles leads for a specific social platform and trigger."""
         print(f"[*] Scraping Social Leads on [{platform}] for trigger '{keyword}' in {location}...")
-        raw_results = self.search_social_dorks(platform, keyword, location)
+        raw_results = self.search_social_dorks(platform, keyword, location, industry)
 
         compiled_leads = []
         today_str = datetime.date.today().strftime("%d/%m/%Y")
 
-        for item in raw_results:
+        def process_social_item(item):
             link = item.get("link", "")
             title = item.get("title", "")
             snippet = item.get("snippet", "")
 
-            # Extract email & phone from snippet first
             emails = self.crawler.extract_emails(snippet)
             phones = self.crawler.extract_phones(snippet)
 
-            # Clean company / profile name from title
             company_candidate = title
             contact_candidate = "Founder / Decision Maker"
 
@@ -241,19 +241,21 @@ class SocialLeadScraper:
             email = emails[0] if emails else ""
             phone = phones[0] if phones else ""
 
-            # If snippet didn't have email/phone, crawl if it's a direct website
+            # If snippet didn't have email/phone, crawl if external URL
             if not email and not phone:
                 if self.crawler.is_valid_domain(link) and not any(s in link for s in ["linkedin.com", "instagram.com", "facebook.com", "twitter.com"]):
                     crawl_res = self.crawler.crawl_url(link)
-                    if crawl_res.get("emails"):
-                        email = crawl_res["emails"][0]
-                    if crawl_res.get("phones"):
-                        phone = crawl_res["phones"][0]
+                    crawl_emails = crawl_res.get("emails", [])
+                    crawl_phones = crawl_res.get("phones", [])
+                    if crawl_emails:
+                        email = crawl_emails[0]
+                    if crawl_phones:
+                        phone = crawl_phones[0]
 
             if not email and not phone:
-                continue
+                return None
 
-            lead_row = [
+            return [
                 today_str,                                    # Date
                 platform,                                     # Lead Source (e.g. LinkedIn, Instagram)
                 company_candidate,                            # Company
@@ -265,7 +267,12 @@ class SocialLeadScraper:
                 LEAD_ADDED_BY_SOCIAL,                         # Lead Added By
                 f"Social Link: {link} | Trigger: {keyword}"  # Notes
             ]
-            compiled_leads.append(lead_row)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            results_list = list(executor.map(process_social_item, raw_results[:25]))
+            for res in results_list:
+                if res:
+                    compiled_leads.append(res)
 
         # Supplement with Gemini Social Grounding
         gemini_social = self.search_gemini_social_grounding(platform, keyword, location, industry)
