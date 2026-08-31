@@ -41,6 +41,8 @@ try:
         SHEET_HEADERS
     )
     from .deep_crawler import DeepContactCrawler
+    from .lead_validator import LeadValidator
+    from .google_maps_scraper import GoogleMapsLeadScraper
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     from config import (
@@ -56,6 +58,8 @@ except ImportError:
         SHEET_HEADERS
     )
     from scrapers.deep_crawler import DeepContactCrawler
+    from scrapers.lead_validator import LeadValidator
+    from scrapers.google_maps_scraper import GoogleMapsLeadScraper
 
 
 if sys.stdout.encoding != 'utf-8':
@@ -67,6 +71,8 @@ if sys.stdout.encoding != 'utf-8':
 class WebLeadScraper:
     def __init__(self):
         self.crawler = DeepContactCrawler()
+        self.validator = LeadValidator()
+        self.maps_scraper = GoogleMapsLeadScraper()
         self.google_access_token = None
         self.token_expiry = 0
 
@@ -231,8 +237,18 @@ class WebLeadScraper:
         # Clean industry for natural search query (remove slashes)
         clean_industry = industry.replace("/", " ").replace("  ", " ").strip()
         first_term = clean_industry.split()[0]
+        today_str = datetime.date.today().strftime("%d/%m/%Y")
+        compiled_leads = []
+
+        # 1. HARVEST GOOGLE MAPS / PLACES (100% Verified Australian Businesses & Phone Numbers)
+        try:
+            maps_leads = self.maps_scraper.harvest_industry_leads(clean_industry, role, location, limit=8)
+            if maps_leads:
+                compiled_leads.extend(maps_leads)
+        except Exception as e:
+            print(f"[!] Google Maps Harvester warning: {e}")
         
-        # Multi-tiered high-yield queries
+        # 2. MULTI-TIERED HIGH-YIELD WEB QUERIES
         queries = [
             f'site:.com.au {clean_industry} contact phone email',
             f'site:.com.au "{first_term}" services contact phone email',
@@ -257,9 +273,6 @@ class WebLeadScraper:
                 seen_links.add(link)
                 unique_results.append(r)
 
-        compiled_leads = []
-        today_str = datetime.date.today().strftime("%d/%m/%Y")
-
         for item in unique_results:
             link = item.get("link", "")
             title = item.get("title", "")
@@ -281,30 +294,33 @@ class WebLeadScraper:
                 all_emails = list(dict.fromkeys(emails + snippet_emails))
                 all_phones = list(dict.fromkeys(phones + snippet_phones))
 
-                email = all_emails[0] if all_emails else ""
-                phone = all_phones[0] if all_phones else ""
+                raw_email = all_emails[0] if all_emails else ""
+                raw_phone = all_phones[0] if all_phones else ""
 
-                if not email and not phone:
-                    continue
-
-                company = crawl_data.get("company_name", "") or title.split("-")[0].split("|")[0].split("–")[0].strip()
-                if not company or len(company) < 2:
+                # Reverse snippet search if email is missing
+                if not raw_email:
                     try:
                         from urllib.parse import urlparse
                         domain = urlparse(link).netloc.replace("www.", "")
-                        company = domain.split(".")[0].capitalize()
+                        raw_email = self.maps_scraper.reverse_domain_email_lookup(domain)
                     except Exception:
-                        company = clean_industry + " Business"
+                        pass
 
-                # Contact person name heuristic
+                contact_info = self.validator.verify_lead(raw_email, raw_phone, require_both=False)
+                if not contact_info["is_valid"]:
+                    continue
+
+                raw_company = crawl_data.get("company_name", "") or title
+                company = self.validator.clean_company_name(raw_company, domain_fallback=link)
                 contact_name = role if role else "Decision Maker"
+                clean_phone_str = contact_info["phone"] or contact_info["mobile"]
 
                 lead_row = [
                     today_str,                   # Date
                     source,                      # Lead Source
                     company,                     # Company
-                    email,                       # Email
-                    phone,                       # Phone Number / Mobile Number
+                    contact_info["email"],       # Email
+                    clean_phone_str,             # Phone Number / Mobile Number
                     industry,                    # Industry
                     contact_name,                # Customer Name
                     "New",                       # Status
@@ -312,27 +328,9 @@ class WebLeadScraper:
                     f"Website: {link}"           # Notes
                 ]
                 compiled_leads.append(lead_row)
-                print(f"  [✓] Lead: {company} | Email: {email} | Phone: {phone}")
+                print(f"  [✓] Web Lead: {company} | Email: {lead_row[3]} | Phone: {lead_row[4]}")
             except Exception as e:
                 pass
-
-        # 4. Also fetch from Gemini Grounding
-        gemini_leads = self.search_gemini_grounding(f"{industry} companies", location)
-        for g in gemini_leads:
-            lead_row = [
-                today_str,
-                g.get("source", "Gemini AI"),
-                g.get("company", ""),
-                g.get("email", ""),
-                g.get("phone", ""),
-                g.get("industry", industry),
-                g.get("contact_name", role),
-                "New",
-                LEAD_ADDED_BY_WEB,
-                f"Website: {g.get('link', '')} | {g.get('notes', '')}"
-            ]
-            if lead_row[3] or lead_row[4]:  # Must have email or phone
-                compiled_leads.append(lead_row)
 
         print(f"[+] Found {len(compiled_leads)} verified Web Leads for [{industry}].")
         return compiled_leads

@@ -23,29 +23,34 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     from config import JUNK_DOMAINS, EMAIL_REGEX, AU_PHONE_PATTERNS, INTL_PHONE_PATTERN
 
+try:
+    from .lead_validator import LeadValidator
+except ImportError:
+    from scrapers.lead_validator import LeadValidator
+
 
 class DeepContactCrawler:
-    def __init__(self, timeout=3):
-        self.timeout = timeout
+    def __init__(self):
         self.headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9"
+            "Accept-Language": "en-AU,en-US;q=0.9,en;q=0.8"
         }
+        self.validator = LeadValidator()
 
     def is_valid_domain(self, url):
-        """Check if URL domain is not in the junk blacklist."""
-        try:
-            domain = urlparse(url).netloc.lower()
-            if domain.startswith("www."):
-                domain = domain[4:]
-            return domain not in JUNK_DOMAINS
-        except Exception:
+        """Filters out major search engines, junk domains, and file downloads."""
+        if not url or not url.startswith("http"):
             return False
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        if not domain or domain in JUNK_DOMAINS:
+            return False
+        if any(url.lower().endswith(ext) for ext in [".pdf", ".png", ".jpg", ".zip", ".mp4", ".docx", ".xlsx"]):
+            return False
+        return True
 
     def extract_emails(self, text, html=""):
         """Extract valid email addresses from text and html."""
@@ -55,17 +60,15 @@ class DeepContactCrawler:
         if html:
             mailto_matches = re.findall(r'href=[\'"]mailto:([^\s?\'"]+)', html, re.IGNORECASE)
             for m in mailto_matches:
-                clean_m = m.strip().lower()
-                if EMAIL_REGEX.match(clean_m):
-                    emails.add(clean_m)
+                clean_email = self.validator.validate_and_clean_email(m)
+                if clean_email:
+                    emails.add(clean_email)
                     
         # 2. From plain text
         for match in EMAIL_REGEX.findall(text):
-            clean_email = match.strip().lower().rstrip(".")
-            # Filter out image/font file extensions
-            if not any(clean_email.endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".css", ".js"]):
-                if not any(ignore in clean_email for ignore in ["example.com", "domain.com", "email.com", "sentry.io"]):
-                    emails.add(clean_email)
+            clean_email = self.validator.validate_and_clean_email(match)
+            if clean_email:
+                emails.add(clean_email)
                     
         return list(emails)
 
@@ -77,23 +80,22 @@ class DeepContactCrawler:
         if html:
             tel_matches = re.findall(r'href=[\'"]tel:([^\s?\'"]+)', html, re.IGNORECASE)
             for t in tel_matches:
-                clean_t = re.sub(r"[^\d+]", "", t.strip())
-                if len(clean_t) >= 8:
-                    phones.add(clean_t)
+                clean_p, _ = self.validator.validate_and_clean_phone(t)
+                if clean_p:
+                    phones.add(clean_p)
 
         # 2. Australian patterns
         for pattern in AU_PHONE_PATTERNS:
             for match in pattern.findall(text):
-                clean_p = match.strip()
-                if len(re.sub(r"\D", "", clean_p)) >= 8:
+                clean_p, _ = self.validator.validate_and_clean_phone(match)
+                if clean_p:
                     phones.add(clean_p)
 
         # 3. International fallback if no AU phones
         if not phones:
             for match in INTL_PHONE_PATTERN.findall(text):
-                clean_p = match.strip()
-                digits = re.sub(r"\D", "", clean_p)
-                if 8 <= len(digits) <= 15:
+                clean_p, _ = self.validator.validate_and_clean_phone(match)
+                if clean_p:
                     phones.add(clean_p)
 
         return list(phones)

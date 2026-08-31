@@ -48,9 +48,15 @@ def run_social(limit=None):
     return scraper.run(max_targets=limit)
 
 
-def run_all(limit=None):
+def run_all(limit=None, sync_crm=True):
     scraper = WebSocialScraper()
-    return scraper.run_all(max_web_industries=limit, max_social_targets=limit)
+    res = scraper.run_all(max_web_industries=limit, max_social_targets=limit)
+    if sync_crm:
+        print("\n" + "=" * 80)
+        print("🔄 Automatically syncing verified leads to Zoho CRM...")
+        print("=" * 80)
+        run_crm_sync()
+    return res
 
 
 def run_crm_sync():

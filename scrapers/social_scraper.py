@@ -42,6 +42,7 @@ try:
         SHEET_HEADERS
     )
     from .deep_crawler import DeepContactCrawler
+    from .lead_validator import LeadValidator
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     from config import (
@@ -58,6 +59,7 @@ except ImportError:
         SHEET_HEADERS
     )
     from scrapers.deep_crawler import DeepContactCrawler
+    from scrapers.lead_validator import LeadValidator
 
 
 if sys.stdout.encoding != 'utf-8':
@@ -69,6 +71,7 @@ if sys.stdout.encoding != 'utf-8':
 class SocialLeadScraper:
     def __init__(self):
         self.crawler = DeepContactCrawler()
+        self.validator = LeadValidator()
         self.google_access_token = None
         self.token_expiry = 0
 
@@ -252,15 +255,19 @@ class SocialLeadScraper:
                     if crawl_phones:
                         phone = crawl_phones[0]
 
-            if not email and not phone:
+            contact_info = self.validator.verify_lead(email, phone, require_both=False)
+            if not contact_info["is_valid"]:
                 return None
+
+            clean_company = self.validator.clean_company_name(company_candidate, domain_fallback=link)
+            clean_phone_str = contact_info["phone"] or contact_info["mobile"]
 
             return [
                 today_str,                                    # Date
                 platform,                                     # Lead Source (e.g. LinkedIn, Instagram)
-                company_candidate,                            # Company
-                email,                                        # Email
-                phone,                                        # Phone Number / Mobile Number
+                clean_company,                                # Company
+                contact_info["email"],                        # Email
+                clean_phone_str,                              # Phone Number / Mobile Number
                 industry,                                     # Industry
                 contact_candidate,                            # Customer Name
                 "New",                                        # Status

@@ -8,6 +8,7 @@ from .web_lead_scraper import WebLeadScraper
 from .social_scraper import SocialLeadScraper
 from .web_social_scraper import WebSocialScraper
 from .crm_sync import CrmSyncEngine
+from .lead_validator import LeadValidator
 
 __all__ = [
     "DeepContactCrawler",
@@ -15,4 +16,5 @@ __all__ = [
     "SocialLeadScraper",
     "WebSocialScraper",
     "CrmSyncEngine",
+    "LeadValidator",
 ]
