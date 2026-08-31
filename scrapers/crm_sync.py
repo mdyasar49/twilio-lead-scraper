@@ -130,7 +130,7 @@ class CrmSyncEngine:
         return None
 
     def fetch_sheet_rows(self, spreadsheet_id, tab_name):
-        """Fetches all rows from a Google Sheet tab."""
+        """Fetches all rows from a Google Sheet tab with retry support."""
         token = self.get_google_access_token()
         if not token:
             return []
@@ -138,13 +138,16 @@ class CrmSyncEngine:
         url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{tab_name}!A:K"
         headers = {"Authorization": f"Bearer {token}"}
 
-        try:
-            res = requests.get(url, headers=headers, timeout=15)
-            if res.status_code == 200:
-                data = res.json()
-                return data.get("values", [])
-        except Exception as e:
-            print(f"[!] Error fetching sheet {spreadsheet_id}: {e}")
+        for attempt in range(3):
+            try:
+                res = requests.get(url, headers=headers, timeout=45)
+                if res.status_code == 200:
+                    data = res.json()
+                    return data.get("values", [])
+            except Exception as e:
+                if attempt == 2:
+                    print(f"[!] Error fetching sheet {spreadsheet_id}: {e}")
+                time.sleep(2)
         return []
 
     def sync_leads_to_zoho_batch(self, leads_data):
