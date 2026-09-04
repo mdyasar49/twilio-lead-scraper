@@ -28,8 +28,8 @@ const SOCIAL_TARGET_LOCATIONS = ["Australia"];
 // Automation execution interval in hours (Set to 1 for high-volume leads)
 const SOCIAL_RUN_INTERVAL_HOURS = 1;
 
-// Number of search results/leads to fetch per query
-const SOCIAL_LEADS_PER_QUERY = 30;
+// // Number of search results/leads to fetch per query
+const SOCIAL_LEADS_PER_QUERY = 10;
 
 // Date filter for recent posts
 const SOCIAL_DATE_FILTER = "m"; 
@@ -41,10 +41,10 @@ const SOCIAL_LEAD_ADDED_BY_NAME = "Social Scraper";
 const SOCIAL_DAILY_LEAD_LIMIT = 0;
 
 // Default Serper.dev API Key (High Speed, Live Google Search)
-const SOCIAL_DEFAULT_SERPER_API_KEY = "592605c9ec3bcff9bf492e4062ee21a1e8cd699a";
+const SOCIAL_DEFAULT_SERPER_API_KEY = "YOUR_SERPER_API_KEY";
 
 // Gemini AI Google Search Grounding Key & Model
-const SOCIAL_DEFAULT_GEMINI_API_KEY = "";
+const SOCIAL_DEFAULT_GEMINI_API_KEY = "YOUR_GEMINI_API_KEY";
 const SOCIAL_DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
 const SOCIAL_KEYWORDS = [
@@ -99,23 +99,27 @@ const SOCIAL_STATUSES = [
 ];
 
 const SOCIAL_HEADERS = [
-  "Date",
-  "Lead Source",
-  "Company",
+  "Scraped Date",
+  "Post Date / Posted Date",
+  "Post Link / Direct Post URL",
+  "Page Link / Profile Page URL",
+  "Platform",
+  "Company / Page Name",
   "Email",
   "Phone Number / Mobile Number",
   "Industry",
-  "Customer Name",
+  "Contact Name / Role",
   "Status",
   "Lead Added By",
   "Notes"
 ];
 
+// Global runtime flags to prevent repetitive blocked calls within a single execution
 let isSocialDdgBlockedGlobal = false;
 let isSocialYahooBlockedGlobal = false;
 let isSocialAskBlockedGlobal = false;
-let isSocialGoogleCseBlockedGlobal = false;
 let isSocialSerperBlockedGlobal = false;
+let isSocialGoogleCseBlockedGlobal = false;
 let isSocialSerpApiBlockedGlobal = false;
 let isSocialBraveBlockedGlobal = false;
 let isSocialSearchApiBlockedGlobal = false;
@@ -137,54 +141,63 @@ function getSocialCountryConfig(location) {
     /(\+61[\s.-]?[2378][\s.-]?\d{4}[\s.-]?\d{4})/,
     /(0[2378][\s.-]?\d{4}[\s.-]?\d{4})/,
     /(1300[\s.-]?\d{3}[\s.-]?\d{3})/,
-    /(1800[\s.-]?\d{3}[\s.-]?\d{3})/,
-    /(\+\d{1,3}[\s.-]?\d{1,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4})/
+    /(1800[\s.-]?\d{3}[\s.-]?\d{3})/
   ];
 
-  if (loc.includes("india") || loc.includes("chennai") || loc.includes("mumbai") || loc.includes("delhi") || loc.includes("bangalore") || loc.includes("hyderabad")) {
-    gl = "in";
-    countryCode = "+91";
-    phoneRegexes = [
-      /(?:mobile|mob|cell|phone|ph|tel|contact|whatsapp|call)[\s.:#-]*(\+?\d[\d\s.-]{7,15}\d)/i,
-      /(\+91[\s.-]?[6-9]\d{9})/,
-      /([6-9]\d{9})/,
-      /(\+91[\s.-]?\d{2,4}[\s.-]?\d{6,8})/,
-      /(\+\d{1,3}[\s.-]?\d{1,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4})/
-    ];
-  } else if (loc.includes("uk") || loc.includes("united kingdom") || loc.includes("london") || loc.includes("england")) {
-    gl = "uk";
-    countryCode = "+44";
-    phoneRegexes = [
-      /(?:mobile|mob|cell|phone|ph|tel|contact|whatsapp|call)[\s.:#-]*(\+?\d[\d\s.-]{7,15}\d)/i,
-      /(\+44[\s.-]?7\d{3}[\s.-]?\d{6})/,
-      /(07\d{3}[\s.-]?\d{6})/,
-      /(\+44[\s.-]?\d{2,4}[\s.-]?\d{5,8})/,
-      /(\+\d{1,3}[\s.-]?\d{1,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4})/
-    ];
-  } else if (loc.includes("us") || loc.includes("usa") || loc.includes("united states") || loc.includes("america")) {
-    gl = "us";
-    countryCode = "+1";
-    phoneRegexes = [
-      /(?:mobile|mob|cell|phone|ph|tel|contact|whatsapp|call)[\s.:#-]*(\+?\d[\d\s.-]{7,15}\d)/i,
-      /(\+1[\s.-]?\d{3}[\s.-]?\d{3}[\s.-]?\d{4})/,
-      /(\d{3}[\s.-]?\d{3}[\s.-]?\d{4})/,
-      /(\+\d{1,3}[\s.-]?\d{1,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4})/
-    ];
-  }
   return { gl: gl, countryCode: countryCode, phoneRegexes: phoneRegexes };
 }
 
 function isValidSocialEmail(email) {
   if (!email || typeof email !== 'string') return false;
-  email = email.trim().toLowerCase();
+  email = email.trim().toLowerCase().replace(/^mailto:/i, "").replace(/[<>]/g, "");
   if (email.length < 5 || email.length > 100) return false;
   const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   if (!regex.test(email)) return false;
+  const invalidExts = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".css", ".js", ".pdf", ".zip", ".mp4", ".ico"];
+  for (let i = 0; i < invalidExts.length; i++) {
+    if (email.endsWith(invalidExts[i])) return false;
+  }
   const invalid = ["example.com", "sample.com", "domain.com", "email.com", "test.com", "sentry.io", "wixpress.com", "noreply", "no-reply", "donotreply"];
   for (let i = 0; i < invalid.length; i++) {
     if (email.includes(invalid[i])) return false;
   }
   return true;
+}
+
+function isValidSocialAustralianPhone(phone) {
+  if (!phone || typeof phone !== 'string') return { valid: false, formatted: "", type: "" };
+  const p = phone.trim().replace(/^tel:/i, "");
+  if (p.includes(".")) {
+    const parts = p.split(".");
+    if (parts.length > 1 && parts[1].length > 2 && /^\d+$/.test(parts[1])) return { valid: false, formatted: "", type: "" };
+  }
+  let digits = p.replace(/\D/g, "");
+  if (digits.length < 6 || digits.length > 12) return { valid: false, formatted: "", type: "" };
+
+  if (digits.startsWith("2061") && digits.length > 12) digits = digits.substring(2);
+  if (digits.startsWith("200") && digits.length > 12) digits = digits.substring(2);
+
+  if (p.startsWith("+") && !digits.startsWith("61")) return { valid: false, formatted: "", type: "" };
+
+  if ((digits.startsWith("1300") || digits.startsWith("1800")) && digits.length === 10) {
+    return { valid: true, formatted: digits.substring(0,4) + " " + digits.substring(4,7) + " " + digits.substring(7), type: "tollfree" };
+  }
+  if (digits.startsWith("04") && digits.length === 10) {
+    return { valid: true, formatted: digits.substring(0,4) + " " + digits.substring(4,7) + " " + digits.substring(7), type: "mobile" };
+  }
+  if (digits.length === 10 && digits.startsWith("0") && ["2","3","7","8"].includes(digits[1])) {
+    return { valid: true, formatted: "(" + digits.substring(0,2) + ") " + digits.substring(2,6) + " " + digits.substring(6), type: "landline" };
+  }
+  if (digits.startsWith("61") && (digits.length === 10 || digits.length === 11)) {
+    let local = digits.substring(2);
+    if (local.startsWith("0")) local = local.substring(1);
+    if (local.startsWith("4") && local.length === 9) {
+      return { valid: true, formatted: "+61 4" + local.substring(1,4) + " " + local.substring(4,7) + " " + local.substring(7), type: "mobile" };
+    } else if (local.length === 9 && ["2","3","7","8"].includes(local[0])) {
+      return { valid: true, formatted: "+61 " + local[0] + " " + local.substring(1,5) + " " + local.substring(5), type: "landline" };
+    }
+  }
+  return { valid: false, formatted: "", type: "" };
 }
 
 function isValidEmail(email) {
@@ -291,25 +304,31 @@ function bulkImportSocialLeads(leadsArray) {
     const newRows = [];
 
     leadsArray.forEach(lead => {
-      const email = lead.email ? lead.email.toLowerCase().trim() : "";
-      const phone = lead.phone ? lead.phone.trim() : "";
+      const rawEmail = lead.email ? lead.email.toLowerCase().trim() : "";
+      const rawPhone = lead.phone ? lead.phone.trim() : "";
+      const rawCompany = lead.company || "Social Profile";
+      
+      const cleanEmail = isValidSocialEmail(rawEmail) ? rawEmail : "";
+      const phoneRes = isValidSocialAustralianPhone(rawPhone);
+      const cleanPhone = phoneRes.valid ? phoneRes.formatted : "";
 
-      if (!email && !phone) return;
-      if (email && existingEmails.has(email)) return;
-      const phoneClean = phone ? phone.replace(/\s+/g, "").trim() : "";
-      if (phoneClean && existingPhones.has(phoneClean)) return;
+      // MANDATORY: Lead MUST have BOTH a valid Email AND a valid Phone/Mobile number
+      if (!cleanEmail || !cleanPhone) return;
+      if (existingEmails.has(cleanEmail)) return;
+      const phoneDigits = cleanPhone.replace(/\D/g, "");
+      if (phoneDigits && existingPhones.has(phoneDigits)) return;
 
-      if (email) existingEmails.add(email);
-      if (phoneClean) existingPhones.add(phoneClean);
+      existingEmails.add(cleanEmail);
+      if (phoneDigits) existingPhones.add(phoneDigits);
 
       newRows.push([
         lead.date || today,
-        lead.leadSource || "Social Media",
-        lead.company || "Social Profile",
-        email,
-        phone,
+        getValidSocialLeadSource(lead.leadSource),
+        rawCompany,
+        cleanEmail,
+        cleanPhone,
         lead.industry || "General",
-        lead.customerName || "Founder",
+        lead.customerName || "Founder / Executive",
         lead.status || "New",
         lead.addedBy || SOCIAL_LEAD_ADDED_BY_NAME,
         lead.notes || ""
@@ -319,7 +338,7 @@ function bulkImportSocialLeads(leadsArray) {
     if (newRows.length > 0) {
       const startRow = sheet.getLastRow() + 1;
       sheet.getRange(startRow, 1, newRows.length, 10).setValues(newRows);
-      Logger.log("✅ Successfully imported " + newRows.length + " social leads into sheet.");
+      Logger.log("✅ Successfully imported " + newRows.length + " verified social leads into sheet.");
       return newRows.length;
     }
   } catch (e) {
@@ -529,7 +548,8 @@ function automatedSocialSearchTrigger() {
       }
 
       Logger.log("🔍 Row " + originalRowIndex + " [" + platform + "]: " + query);
-      const leads = searchSocialViaDuckDuckGoHTML(query, platform, industry, location, keyword);
+      const rawLeads = searchSocialViaDuckDuckGoHTML(query, platform, industry, location, keyword);
+      const leads = (rawLeads && Array.isArray(rawLeads)) ? rawLeads : [];
       Logger.log("📧 Found " + leads.length + " candidate social leads");
 
       const todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy");
@@ -538,19 +558,17 @@ function automatedSocialSearchTrigger() {
         let email = lead.email ? lead.email.toLowerCase().trim() : "";
         let phone = lead.phone ? lead.phone.trim() : "";
 
-        // Fast validation: lead MUST have at least an Email OR a Phone number
-        if (!email && !phone) return;
+        // MANDATORY: Must have BOTH valid Email AND valid Phone/Mobile
+        if (!email || !phone) return;
 
-        if (email) {
-          if (!isValidSocialEmail(email)) return;
-          if (existingEmails.has(email)) return;
-        }
+        if (!isValidSocialEmail(email)) return;
+        if (existingEmails.has(email)) return;
 
-        const phoneClean = phone ? phone.replace(/\s+/g, "").trim() : "";
-        if (phoneClean && existingPhones.has(phoneClean)) return;
+        const phoneClean = phone.replace(/\s+/g, "").trim();
+        if (existingPhones.has(phoneClean)) return;
 
-        if (email) existingEmails.add(email);
-        if (phoneClean) existingPhones.add(phoneClean);
+        existingEmails.add(email);
+        existingPhones.add(phoneClean);
 
         rowLeadsToImport.push([
           lead.date || todayStr,
@@ -593,7 +611,7 @@ function automatedSocialSearchTrigger() {
 function searchSocialViaDuckDuckGoHTML(query, platform, industry, location, keyword) {
   const processedEmails = new Set();
   const config = getSocialCountryConfig(location);
-  let leads = null;
+  let leads = [];
 
   // 1. TIER 1: Gemini AI Social Search Grounding (3 Free Auto-Rotating Keys)
   leads = searchSocialViaGeminiSearchGrounding(query, platform, industry, location, keyword, config, processedEmails);
@@ -663,7 +681,7 @@ function searchSocialViaDuckDuckGoHTML(query, platform, industry, location, keyw
 function searchSocialViaSerperAPI(query, platform, industry, location, keyword, config, processedEmails) {
   let apiKey = PropertiesService.getScriptProperties().getProperty("SERPER_API_KEY");
   if (!apiKey || apiKey.trim().length < 10) {
-    apiKey = typeof SOCIAL_DEFAULT_SERPER_API_KEY !== 'undefined' ? SOCIAL_DEFAULT_SERPER_API_KEY : "592605c9ec3bcff9bf492e4062ee21a1e8cd699a";
+    apiKey = typeof SOCIAL_DEFAULT_SERPER_API_KEY !== 'undefined' ? SOCIAL_DEFAULT_SERPER_API_KEY : "YOUR_SERPER_API_KEY";
   }
   apiKey = apiKey.trim();
 
@@ -793,11 +811,13 @@ function extractSocialNameFromEmail(email) {
 
 function searchSocialViaGeminiSearchGrounding(query, platform, industry, location, keyword, config, processedEmails) {
   if (isSocialUrlFetchQuotaExhaustedGlobal) return [];
-  const scriptKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || SOCIAL_DEFAULT_GEMINI_API_KEY;
-  const geminiKeys = [scriptKey].filter(k => k && k.trim().length > 10);
+  const geminiKeys = [
+    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || SOCIAL_DEFAULT_GEMINI_API_KEY,
+    "YOUR_GEMINI_API_KEY"
+  ].filter(k => k && k.trim().length > 10);
 
   const leads = [];
-  const models = [SOCIAL_DEFAULT_GEMINI_MODEL, "gemini-1.5-flash", "gemini-2.5-pro", "gemini-3.6-pro"];
+  const models = [SOCIAL_DEFAULT_GEMINI_MODEL, "gemini-3.1-flash-lite", "gemini-2.5-flash"];
 
   for (let k = 0; k < geminiKeys.length; k++) {
     if (isSocialUrlFetchQuotaExhaustedGlobal) break;
@@ -821,7 +841,7 @@ Do not wrap in markdown fences. Return pure JSON array only.`;
         const payload = {
           contents: [{ parts: [{ text: prompt }] }],
           tools: [{ googleSearch: {} }],
-          generationConfig: { temperature: 0.1 }
+          generationConfig: { temperature: 0.1, maxOutputTokens: 150 }
         };
 
         const response = UrlFetchApp.fetch(url, {
@@ -1608,8 +1628,10 @@ function removeDuplicateSocialLeads() {
     data.forEach(row => {
       const email = row[3] ? row[3].toString().toLowerCase().trim() : "";
       const phone = row[4] ? row[4].toString().replace(/\s+/g, "").trim() : "";
-      const key = email || phone;
-      if (key && !seen.has(key)) {
+      // MANDATORY: Keep only leads with BOTH email AND phone
+      if (!email || !phone) return;
+      const key = email + "|" + phone;
+      if (!seen.has(key)) {
         seen.add(key);
         unique.push(row);
       }
