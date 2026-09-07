@@ -605,7 +605,7 @@ function configureZohoCampaignsFromMenu() {
 function configureSmsRecipientFromMenu() {
   try {
     const ui = SpreadsheetApp.getUi(), props = PropertiesService.getScriptProperties();
-    const currentNum = props.getProperty("SMS_RECIPIENT_NUMBER") || "+919025943184";
+    const currentNum = props.getProperty("SMS_RECIPIENT_NUMBER") || "+61403339424";
     const res = ui.prompt("📱 Configure SMS Recipient", "Enter target mobile number with country code (current: " + currentNum + "):", ui.ButtonSet.OK_CANCEL);
     if (res.getSelectedButton() !== ui.Button.OK) return;
     const phone = res.getResponseText().trim();
