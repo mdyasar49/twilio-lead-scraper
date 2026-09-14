@@ -1,63 +1,12 @@
-name: ⏰ 1-Hour Automated Lead Scraper & CRM Sync
+name: ⏸️ [DISABLED] Twilio Lead Scraper (Inactive)
 
+# Scheduled Scraping is permanently disabled as per user instruction.
 on:
-  schedule:
-    # Runs automatically EVERY 1 HOUR (24/7 in Cloud)
-    - cron: '0 * * * *'
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
-  scrape-and-sync:
+  inactive:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🐍 Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: 📦 Install Dependencies
-        run: |
-          set +e
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt || pip install requests google-api-python-client google-auth python-dotenv beautifulsoup4 pandas urllib3 pyjwt || true
-
-      - name: 🔐 Configure Google Service Account & Zoho Credentials
-        env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-          ZOHO_CLIENT_JSON: ${{ secrets.ZOHO_CLIENT_JSON }}
-        run: |
-          set +e
-          if [ -n "$GCP_SA_KEY" ]; then
-            echo "$GCP_SA_KEY" > sheet-sync-504707-85df40232946.json
-          fi
-          if [ -n "$ZOHO_CLIENT_JSON" ]; then
-            echo "$ZOHO_CLIENT_JSON" > self_client.json
-          fi
-
-      - name: 🚀 Run Multi-Engine Web & Social Lead Scraper
-        env:
-          SERPER_API_KEY: ${{ secrets.SERPER_API_KEYS || secrets.SERPER_API_KEY || '592605c9ec3bcff9bf492e4062ee21a1e8cd699a' }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEYS || secrets.GEMINI_API_KEY }}
-          WEB_SPREADSHEET_ID: "1CbW9pPLyEtyl8cBpjNDcOEuLLFrgK5LFF8xoPRSMbpw"
-          WEB_TAB_NAME: "Leads"
-          SOCIAL_SPREADSHEET_ID: "1P9LOyq4UKwVuc8ZFjg6cOlb2fwOci3nUV300E5J5Fgw"
-          SOCIAL_TAB_NAME: "Social Leads"
-        run: |
-          set +e
-          python main.py --mode all || echo "Lead scraper run completed."
-
-      - name: 🔄 Sync Fresh Leads to Zoho CRM
-        run: |
-          set +e
-          python main.py --mode sync-crm || echo "Zoho CRM sync completed."
+      - name: Notice
+        run: echo "Twilio lead scraper cron schedule is permanently deactivated."
